@@ -94,8 +94,6 @@ const STRIDE = 15;
 /** It comes out from behind its desk, rising over these frames (frame pixels below the floor). */
 const EMERGE: Record<HugScene, readonly number[]> = { work: [92, 64, 36, 14, 4], meeting: [92, 64, 36, 14, 4], rest: [], away: [92, 64, 36, 14, 4], meal: [] };
 const TURN = [{ facing: 0, squash: 0.62 }, { facing: 1, squash: 0.62 }, { facing: 1, squash: 1 }];
-// Over a pup sleeping on its cushion the walker is in front; at a desk, behind it.
-const zFor = (scene: HugScene) => scene === 'rest' ? 3 : 0;
 
 export interface HugWalk {
   sender: 'self' | 'partner';
@@ -106,7 +104,8 @@ export interface HugWalk {
   geometry: PairGeometry;
 }
 
-interface WalkerFrame { at: number; x: number; y: number; scale: number; facing: 1 | -1; frame: number; z: number; shown: boolean; squash: number;
+// The walker is always behind both pups (pet.css), at their desks and cushions alike.
+interface WalkerFrame { at: number; x: number; y: number; scale: number; facing: 1 | -1; frame: number; shown: boolean; squash: number;
   /** Frame pixels it is sunk below the floor (behind its desk): what is below the floor is cut off. */
   sink: number }
 export interface HugPlan {
@@ -139,25 +138,24 @@ export function planHug(walk: HugWalk, reducedMotion = false): HugPlan {
   const emerge = EMERGE[walk.senderScene];
   const frames: WalkerFrame[] = [];
   let at = 0;
-  const push = (u: number, frame: number, facing: 1 | -1, { sink = 0, squash = 1, shown = true, z = 0 } = {}) => {
+  const push = (u: number, frame: number, facing: 1 | -1, { sink = 0, squash = 1, shown = true } = {}) => {
     const scale = from.scale + (to.scale - from.scale) * u;
     frames.push({ at, x: from.x + (to.x - from.x) * u, y: from.y + (to.y - from.y) * u - sink * SPRITE_H / FRAME_H * scale,
-      scale, facing, frame, z, shown, squash, sink });
+      scale, facing, frame, shown, squash, sink });
     at += WALK_FRAME_MS;
   };
-  const z = (u: number) => u < 0.5 ? zFor(walk.senderScene) : zFor(walk.receiverScene);
   const trot = (going: boolean) => {
     const facing = going ? out : (-out as 1 | -1);
     for (let k = 0; k < steps; k++) {
       const u = going ? (k + 1) / steps : 1 - (k + 1) / steps;
       const rising = going ? emerge[k] : emerge[steps - 1 - k];
-      push(u, k % layout.walker.walk, facing, { sink: rising ?? 0, z: z(u) });
+      push(u, k % layout.walker.walk, facing, { sink: rising ?? 0 });
     }
   };
   const turn = (fromFacing: 1 | -1) => {
-    for (const { facing, squash } of TURN) push(1, 0, (facing ? -fromFacing : fromFacing) as 1 | -1, { squash, z: zFor(walk.receiverScene) });
+    for (const { facing, squash } of TURN) push(1, 0, (facing ? -fromFacing : fromFacing) as 1 | -1, { squash });
   };
-  for (let k = 0; k < leaveFrames; k++) push(0, leave + k, 1, { z: zFor(walk.senderScene) });
+  for (let k = 0; k < leaveFrames; k++) push(0, leave + k, 1);
   trot(true);
   let host: [number, number];
   const stand = (facing: 1 | -1, count: number, { sink = 0, squash = 1 } = {}) => {
@@ -199,7 +197,7 @@ export function planHug(walk: HugWalk, reducedMotion = false): HugPlan {
     if (out === -1) turn(-1);
   }
   trot(false);
-  for (let k = leaveFrames - 1; k >= 0; k--) push(0, leave + k, 1, { z: zFor(walk.senderScene) });
+  for (let k = leaveFrames - 1; k >= 0; k--) push(0, leave + k, 1);
   frames.push({ ...frames[frames.length - 1], at, shown: false });
   return { duration: at, away: [0, at], host, frames };
 }
@@ -217,11 +215,10 @@ export const hugPhaseMarks = (plan: HugPlan, scale = 1) =>
 
 /** Web Animations keyframes for the walker: one per frame, each held until the next (pixel-art steps). */
 export function walkerKeyframes(plan: HugPlan): Keyframe[] {
-  return plan.frames.map(({ at, x, y, scale, facing, frame, z, shown, squash, sink }) => ({
+  return plan.frames.map(({ at, x, y, scale, facing, frame, shown, squash, sink }) => ({
     offset: Math.min(1, at / plan.duration),
     easing: 'steps(1, end)',
     opacity: shown ? 1 : 0,
-    zIndex: z,
     clipPath: sink ? `inset(0 0 ${((FRAME_H - ANCHOR_Y + sink) / FRAME_H * 100).toFixed(3)}% 0)` : 'none',
     backgroundPosition: `${(frame / (FRAMES - 1) * 100).toFixed(4)}% 0`,
     transform: `translate(${(x - WALKER.anchorX).toFixed(2)}px, ${(-(y - WALKER.anchorBottom)).toFixed(2)}px) scale(${(scale * squash * facing).toFixed(4)}, ${scale.toFixed(4)})`,
