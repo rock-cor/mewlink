@@ -86,10 +86,8 @@ describe('a hug in place', () => {
     expect(far.duration).toBeGreaterThan(near.duration);
   });
 
-  it('stays in front over a sleeping pup and behind a desk', () => {
-    const plan = planHug(way('partner', 'work', 'rest'));
-    expect(plan.frames[0].z).toBe(0);
-    expect(plan.frames.filter(frame => frame.at < plan.host[0]).at(-1)!.z).toBe(3);
+  it('stays behind both pups all the way, desks and cushions alike', () => {
+    expect(walkerKeyframes(planHug(way('partner', 'work', 'rest'))).every(frame => !('zIndex' in frame))).toBe(true);
   });
 
   it('tells the avatars when the sender is away and when the receiver hosts the hug', () => {
