@@ -3,14 +3,14 @@ import type { Language } from '../platform/language';
 import { OPERATION_BATCH_MS } from './operations';
 
 // Replay is offered per day of the partner's own calendar (a day ends at their
-// midnight) and runs on their real clock, from the first record of the day to
-// the last. While the app runs, two minutes without input are recorded as idle
+// midnight) and runs on their real clock at its real pace (no fast-forward),
+// from the first record of the day to the last. While the app runs, two minutes without input are recorded as idle
 // and ten as rest, so a longer silence means the app was offline (closed,
 // asleep, recording off): all of it is shown as rest, taking its true share of
 // the bar and of the playback time.
 export const REST_GAP_MS = 3 * 60_000;
-/** A whole day plays back in about this long; the user can jump anywhere on the bar. */
-export const DAY_PLAYBACK_MS = 45_000;
+/** Replay plays at the partner's real pace; the user can jump anywhere on the bar. */
+export const REPLAY_SPEED = 1;
 
 export interface ReplaySession { start: number; end: number }
 export interface ReplayDay {
@@ -96,11 +96,6 @@ export function unseenMs(day: ReplayDay, seen: number) {
 /** Time in sessions after `seen`. */
 export function unseenWorkMs(day: ReplayDay, seen: number) {
   return day.sessions.reduce((sum, s) => sum + Math.max(0, s.end - Math.max(s.start, seen)), 0);
-}
-
-/** Playback speed so a day lasts about DAY_PLAYBACK_MS, never slower than 4x. */
-export function daySpeed(day: ReplayDay) {
-  return Math.max(4, daySpanMs(day) / DAY_PLAYBACK_MS);
 }
 
 export function formatDuration(ms: number, language: Language) {

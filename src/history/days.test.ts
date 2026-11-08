@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HistoryRef } from '../storage/events';
-import { dayInstant, dayKey, dayProgress, daySpanMs, daySpeed, formatDuration, groupReplayDays, partnerClock, REST_GAP_MS, restingAt, restSpans, unseenMs, unseenWorkMs } from './days';
+import { dayInstant, dayKey, dayProgress, daySpanMs, formatDuration, groupReplayDays, partnerClock, REST_GAP_MS, restingAt, restSpans, unseenMs, unseenWorkMs } from './days';
 
 const LONDON = 60;
 const iso = (h: number, m = 0, day = 8) => new Date(Date.UTC(2026, 9, day, h, m)).toISOString();
@@ -33,7 +33,6 @@ describe('replay days', () => {
     const [lunch] = restSpans(day);
     expect(restSpans(day)).toHaveLength(1);
     expect((lunch.to - lunch.from) * daySpanMs(day) / 60_000).toBeCloseTo(60, 0); // its true length
-    expect(daySpeed(day)).toBeGreaterThan(500); // ~7 h in ~45 s
   });
 
   it('maps bar positions to the partner\'s real time, rest included', () => {

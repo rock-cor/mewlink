@@ -6,7 +6,7 @@ import { inputBurstReached, INPUT_STRESS_HOLD_MS, trimInputBurst, type InputBurs
 import { historySeen, loadHistoryDraft, markHistorySeen, readReplayEvent, replayReferences, saveHistoryDraft } from '../storage/events';
 import { OPERATION_BATCH_MS, OperationRecorder } from './operations';
 import { saveProblem } from './problems';
-import { dayInstant, dayProgress, daySpeed, groupReplayDays, REST_GAP_MS, restingAt, unseenMs, unseenWorkMs, type ReplayDay } from './days';
+import { dayInstant, dayProgress, groupReplayDays, REPLAY_SPEED, REST_GAP_MS, restingAt, unseenMs, unseenWorkMs, type ReplayDay } from './days';
 import { condensedReplay, replayFrames, type OperationFrame } from './playback';
 import { ACTIVITY_TRANSITION_MS } from '../pet/interaction';
 import type { Language } from '../platform/language';
@@ -188,6 +188,8 @@ export function useOperationHistory(options: Options) {
     const valid = () => generation.current === token;
     let releaseTimer: ReturnType<typeof setTimeout> | undefined;
     let stressUntil = 0;
+    // How far this playback got, in the partner's time.
+    let watched = 0;
     let samples: InputBurstSample[] = [];
     // Nothing from where the previous playback was (a gesture, pressed paws) carries over.
     setCurrent(undefined);
@@ -216,9 +218,9 @@ export function useOperationHistory(options: Options) {
           if (!latest.current.paused) remaining -= step;
         }
       };
-      // The partner's time shown so far. It runs at the day's speed, rest
+      // The partner's time shown so far. It runs at their real pace, rest
       // included, and the bar follows it.
-      const speed = daySpeed(day);
+      const speed = REPLAY_SPEED;
       let clock = from;
       const advanceTo = async (to: number, minimumMs = 0) => {
         const begin = clock, total = Math.max(minimumMs, (to - begin) / speed);
@@ -229,9 +231,11 @@ export function useOperationHistory(options: Options) {
           if (!valid()) break;
           if (latest.current.paused) continue;
           elapsed += step;
-          setProgress(dayProgress(day, Math.min(to, begin + elapsed * speed)));
+          watched = Math.max(watched, Math.min(to, begin + elapsed * speed));
+          setProgress(dayProgress(day, watched));
         }
         clock = Math.max(clock, to);
+        if (valid()) watched = Math.max(watched, clock);
       };
       let shown: ActivityKind | undefined;
       let shownVisual: WorkVisual = 'web';
@@ -302,6 +306,15 @@ export function useOperationHistory(options: Options) {
     } catch { if (valid()) setError({ kind: 'play', at: Date.now() }); }
     finally {
       clearTimeout(releaseTimer);
+      // Stopped partway (closed, or jumped elsewhere on the bar): what was
+      // watched counts as seen, so the notice picks up from there next time.
+      const sameIdentity = () => latest.current.pairing?.relationshipId === identity.relationshipId;
+      if (watched > 0 && sameIdentity()) {
+        const at = watched;
+        void markHistorySeen(identity.relationshipId, at)
+          .then(() => { if (sameIdentity()) setSeen(value => Math.max(value, at)); })
+          .catch(() => undefined);
+      }
       if (valid()) stop();
     }
   }, [stop]);
