@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 
 export const requiredTargets = ['darwin-aarch64', 'darwin-x86_64', 'windows-x86_64'];
-export const repository = 'rockcor/mewlink';
+export const repository = 'rock-cor/mewlink';
 export const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
 export function macSigningLabel(build) {
