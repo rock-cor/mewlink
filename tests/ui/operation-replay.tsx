@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useOperationHistory } from '../../src/history/useOperationHistory';
-import { putEvent, discardRelationshipHistory, historySeen, pendingOutgoing } from '../../src/storage/events';
+import { putEvent, discardRelationshipHistory, historySeen, markWatchedLive, pendingOutgoing } from '../../src/storage/events';
 import type { PairingState } from '../../src/pairing/pairing';
 import type { ActivityKind, PlainEvent, StoredEvent, WorkVisual } from '../../src/domain/types';
 import { SpriteCanvas } from '../../src/pet/SpriteCanvas';
@@ -19,6 +19,8 @@ const identity: PairingState = { version: 1, relationshipId: 'qa-history-2026092
 export function Checks() {
   const [revision, setRevision] = useState(0), [enabled, setEnabled] = useState(true), [paused, setPaused] = useState(false);
   const [report, setReport] = useState('Ready');
+  const [partnerLive, setPartnerLive] = useState(false);
+  const seeded = useRef(0);
   const [progress, setProgress] = useState<string[]>([]);
   const ready = useRef<(activity: ActivityKind, visual: WorkVisual) => boolean>(() => true);
   const onRecord = useCallback(async (create: (state: PairingState) => PlainEvent): Promise<StoredEvent> => {
@@ -27,7 +29,7 @@ export function Checks() {
     return stored;
   }, []);
   const replay = useOperationHistory({ pairing: identity, enabled, paused, activity: 'work', workVisual: 'code',
-    retentionHours: 48, receiverOffset: -420, partnerOffset: 480, showTimezone: true, language: 'zh', revision, durationScale: 0.2, onRecord,
+    retentionHours: 48, receiverOffset: -420, partnerOffset: 480, showTimezone: true, language: 'zh', revision, durationScale: 0.2, onRecord, partnerLive,
     displayReady: (activity, visual) => ready.current(activity, visual) });
   const playback = useActivityPlayback({ desiredActivity: replay.playing ? replay.display.activity : 'work',
     desiredWorkVisual: replay.playing ? replay.display.workVisual : 'web', initialActivity: 'work', initialWorkVisual: 'web',
@@ -46,6 +48,7 @@ export function Checks() {
     let base = Math.floor((Date.now() + 480 * 60_000) / 86_400_000) * 86_400_000 - 480 * 60_000 + 9 * 3600_000;
     if (base + 4 * 3600_000 > Date.now()) base -= 86_400_000;
     const sessions = [[base, 40], [base + 3 * 3600_000, 30]] as const;
+    seeded.current = base;
     const visuals = [0, 1, 2, 3];
     let index = 0;
     for (const [start, minutes] of sessions) {
@@ -79,6 +82,12 @@ export function Checks() {
     <button disabled={!replay.available} onClick={() => void replay.start()}>Replay / stop</button>
     <button onClick={() => void replay.start({ unseen: true })}>Unseen only</button>
     <button onClick={() => setPaused(value => !value)}>Pause / resume</button>
+    <button onClick={() => setPartnerLive(value => !value)}>TA live: {partnerLive ? 'on' : 'off'}</button>
+    <button disabled={!seeded.current} onClick={async () => {
+      // Both apps were online for the first 20 minutes after lunch.
+      await markWatchedLive(identity.relationshipId, seeded.current + 3 * 3600_000, seeded.current + 3 * 3600_000 + 20 * 60_000, 0);
+      setRevision(value => value + 1);
+    }}>Seen live after lunch</button>
     <button onClick={() => setEnabled(value => !value)}>Enable / disable</button>
     <button onClick={async () => setReport('Seen: ' + await historySeen(identity.relationshipId) + '; queued: ' + (await pendingOutgoing(identity)).length)}>Check watermark</button>
     <p role="status">{replay.playing ? 'Playing' : 'Stopped'} · {paused ? 'Paused' : 'Running'} · {enabled ? 'Enabled' : 'Disabled'} · {replay.error ? 'ERROR' : 'No errors'}</p>
@@ -95,7 +104,7 @@ export function Checks() {
     <div className="pet-zone" data-testid="window" style={{ width: 440, height: 120, position: 'relative', background: '#f6ece6', borderRadius: 12 }}>
       <div className="replay-dock">
         {replay.playing && replay.playingDay
-          ? <ReplayScrubber day={replay.playingDay} progress={replay.progress} timeLabel={partnerClock(dayInstant(replay.playingDay, replay.progress), 480)}
+          ? <ReplayScrubber day={replay.playingDay} progress={replay.progress} live={replay.live} timeLabel={partnerClock(dayInstant(replay.playingDay, replay.progress), 480)}
             positionLabel="回放进度" closeLabel="结束回放" onSeek={replay.seek} onClose={replay.stop} />
           : replay.unseen && <ReplayNotice label={`TA 的回放 · ${formatDuration(replay.unseen.ms, 'zh')}`}
             detail={`工作 ${formatDuration(replay.unseen.workMs, 'zh')} · 休息 ${formatDuration(replay.unseen.ms - replay.unseen.workMs, 'zh')}`} onPlay={() => { void replay.start({ unseen: true }); }} />}

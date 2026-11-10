@@ -3,10 +3,10 @@ import type { ActivityKind, OperationBatch, PlainEvent, StoredEvent, WorkVisual 
 import type { PairingState } from '../pairing/pairing';
 import type { InputSignal } from '../platform/activity';
 import { inputBurstReached, INPUT_STRESS_HOLD_MS, trimInputBurst, type InputBurstSample } from '../platform/activity';
-import { historySeen, loadHistoryDraft, markHistorySeen, readReplayEvent, replayReferences, saveHistoryDraft } from '../storage/events';
+import { historySeen, loadHistoryDraft, markHistorySeen, markWatchedLive, readReplayEvent, replayReferences, saveHistoryDraft, watchedLive } from '../storage/events';
 import { OPERATION_BATCH_MS, OperationRecorder } from './operations';
 import { saveProblem } from './problems';
-import { dayInstant, dayProgress, groupReplayDays, REPLAY_SPEED, REST_GAP_MS, restingAt, unseenMs, unseenWorkMs, type ReplayDay } from './days';
+import { dayInstant, dayProgress, firstUnseen, groupReplayDays, liveSpanAt, REPLAY_SPEED, REST_GAP_MS, restingAt, unseenMs, unseenWorkMs, type LiveSpan, type ReplayDay } from './days';
 import { condensedReplay, replayFrames, type OperationFrame } from './playback';
 import { ACTIVITY_TRANSITION_MS } from '../pet/interaction';
 import type { Language } from '../platform/language';
@@ -17,6 +17,8 @@ interface Options {
   revision: number;
   /** The partner's UTC offset in minutes: a replay day ends at their midnight. */
   partnerOffset?: number;
+  /** TA's pup shows TA as it happens here (both apps online): nothing to replay later. */
+  partnerLive?: boolean;
   durationScale: number;
   /** How long a recorded hug takes to show, before the animation speed (pet/hugVisit.ts planHug). */
   hugMs?: number;
@@ -24,6 +26,8 @@ interface Options {
   onRecord: (create: (state: PairingState) => PlainEvent) => Promise<StoredEvent>;
 }
 const DAY_SCAN_INTERVAL_MS = 5_000;
+/** How often a stretch watched live is saved while it goes on. */
+const LIVE_SAVE_INTERVAL_MS = 10_000;
 /** Less than this not yet watched is not worth a notice. */
 const MIN_UNSEEN_MS = 60_000;
 export interface ReplayRequest { day?: string; fraction?: number; unseen?: boolean }
@@ -41,6 +45,7 @@ export function useOperationHistory(options: Options) {
   const recorder = useRef<OperationRecorder | undefined>(undefined);
   const [days, setDays] = useState<ReplayDay[]>([]);
   const [seen, setSeen] = useState(0);
+  const [live, setLive] = useState<LiveSpan[]>([]);
   const [playingDay, setPlayingDay] = useState<ReplayDay>();
   const [progress, setProgress] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -134,9 +139,10 @@ export function useOperationHistory(options: Options) {
     const timer = window.setTimeout(() => {
       lastScan.current = Date.now();
       const since = Date.now() - latest.current.retentionHours * 3_600_000;
-      void Promise.all([replayReferences(identity, since), historySeen(identity.relationshipId)]).then(([refs, seenAt]) => {
+      void Promise.all([replayReferences(identity, since), historySeen(identity.relationshipId), watchedLive(identity.relationshipId)]).then(([refs, seenAt, spans]) => {
         if (!active) return;
         setSeen(seenAt);
+        setLive(spans);
         setDays(groupReplayDays(refs, latest.current.partnerOffset ?? latest.current.receiverOffset));
       }).catch(() => { if (active) setError({ kind: 'read', at: Date.now() }); });
     }, wait);
@@ -145,16 +151,41 @@ export function useOperationHistory(options: Options) {
   }, [identityKey, options.enabled, options.retentionHours, options.revision, options.partnerOffset]);
   const daysRef = useRef(days);
   daysRef.current = days;
+  const liveRef = useRef(live);
+  liveRef.current = live;
+
+  // While TA's pup is live here, what TA does is seen as it happens: the
+  // stretch is kept (and extended as it goes on) so it is never offered as
+  // replay. Not while a replay shows TA's past instead.
+  useEffect(() => {
+    const identity = options.pairing;
+    if (!options.partnerLive || playing || !options.enabled || !identity?.partnerDeviceId) return;
+    const relationshipId = identity.relationshipId;
+    const since = Date.now();
+    const save = () => {
+      const now = Date.now();
+      void markWatchedLive(relationshipId, since, now, now - latest.current.retentionHours * 3_600_000).then(spans => {
+        if (latest.current.pairing?.relationshipId === relationshipId) setLive(spans);
+      }).catch(() => undefined);
+    };
+    const timer = window.setInterval(save, LIVE_SAVE_INTERVAL_MS);
+    return () => { window.clearInterval(timer); save(); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identityKey, options.partnerLive, options.enabled, playing]);
   const playingDayRef = useRef(playingDay);
   playingDayRef.current = playingDay;
 
   // What the notice offers: the not yet watched part of each day, rest included.
   const unseen = useMemo(() => {
-    const open = days.map(day => ({ day, ms: unseenMs(day, seen), workMs: unseenWorkMs(day, seen) }))
+    const open = days.map(day => ({ day, ms: unseenMs(day, seen, live), workMs: unseenWorkMs(day, seen, live) }))
       .filter(entry => entry.ms >= MIN_UNSEEN_MS);
     return open.length ? { first: open[0].day, days: open.length, ms: open.reduce((sum, entry) => sum + entry.ms, 0),
       workMs: open.reduce((sum, entry) => sum + entry.workMs, 0) } : undefined;
-  }, [days, seen]);
+  }, [days, seen, live]);
+  // A day seen live all along has nothing to replay.
+  const replayable = useMemo(() => days.filter(day => unseenMs(day, 0, live) >= MIN_UNSEEN_MS), [days, live]);
+  const replayableRef = useRef(replayable);
+  replayableRef.current = replayable;
 
   const stop = useCallback(() => {
     generation.current++;
@@ -183,6 +214,7 @@ export function useOperationHistory(options: Options) {
     if (!config.enabled || !identity?.partnerDeviceId) return;
     const all = daysRef.current;
     if (!all.length) return;
+    const spans = liveRef.current;
     session.current = true;
     const token = ++generation.current;
     const valid = () => generation.current === token;
@@ -199,10 +231,10 @@ export function useOperationHistory(options: Options) {
       if (!valid()) return;
       // A seek uses the day the bar is drawn from, even if today has grown since.
       const day = request.day ? (playingDayRef.current?.key === request.day ? playingDayRef.current : all.find(item => item.key === request.day))
-        : request.unseen ? all.find(item => unseenMs(item, seenAt) >= MIN_UNSEEN_MS) ?? all.at(-1)
-        : all.at(-1);
+        : request.unseen ? all.find(item => unseenMs(item, seenAt, spans) >= MIN_UNSEEN_MS) ?? replayableRef.current.at(-1)
+        : replayableRef.current.at(-1);
       if (!day) { session.current = false; return; }
-      const fraction = request.fraction ?? (request.unseen ? dayProgress(day, Math.max(day.start, seenAt + 1)) : 0);
+      const fraction = request.fraction ?? (request.unseen ? dayProgress(day, firstUnseen(day, seenAt + 1, spans)) : 0);
       // An unseen start at the very end replays the day; a seek to the end goes there.
       const from = dayInstant(day, request.fraction === undefined && fraction >= 0.999 ? 0 : fraction);
       setPlayingDay(day);
@@ -237,6 +269,17 @@ export function useOperationHistory(options: Options) {
         clock = Math.max(clock, to);
         if (valid()) watched = Math.max(watched, clock);
       };
+      // Stretches watched live before `to` are jumped over, as if seeking past them.
+      const skipLive = async (to: number) => {
+        for (const [liveFrom, liveTo] of spans) {
+          if (liveTo <= clock || liveFrom >= to) continue;
+          if (liveFrom > clock) await advanceTo(liveFrom);
+          if (!valid()) return;
+          clock = Math.max(clock, liveTo);
+          watched = Math.max(watched, clock);
+          setProgress(dayProgress(day, clock));
+        }
+      };
       let shown: ActivityKind | undefined;
       let shownVisual: WorkVisual = 'web';
       const present = async (next: ActivityKind, nextVisual: WorkVisual) => {
@@ -264,8 +307,10 @@ export function useOperationHistory(options: Options) {
       for await (const frame of condensedReplay(frames, speed)) {
         const at = Date.parse(frame.at);
         if (frame.activity) { activity = frame.activity; visual = frame.workVisual ?? visual; }
-        // Before the chosen start: only the pup's state is carried forward.
-        if (at < from) continue;
+        // Before the chosen start, or seen live: only the pup's state is carried forward.
+        if (at < from || liveSpanAt(spans, at)) continue;
+        await skipLive(at);
+        if (!valid()) break;
         // Nothing recorded for a while: the partner was away or offline, and
         // the pup sleeps through it until the next record.
         if ((at - clock > REST_GAP_MS || restingAt(day, clock)) && shown !== 'idle' && shown !== 'rest') {
@@ -322,6 +367,6 @@ export function useOperationHistory(options: Options) {
     const day = playingDayRef.current;
     if (day) void start({ day: day.key, fraction });
   }, [start]);
-  return { recordInput, recordScreenChange, available: days.length > 0, days, unseen, playing, playingDay, progress,
+  return { recordInput, recordScreenChange, available: replayable.length > 0, days, live, unseen, playing, playingDay, progress,
     current, display, hands, error, start, seek, stop };
 }
