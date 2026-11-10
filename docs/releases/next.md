@@ -1,6 +1,6 @@
 # Next release
 
-- Moving the pet window clears click-to-pin and releases DOM/native pointer holds. A native drop click remains suppressed until the next genuine pointer press, so a delayed click cannot pin the hover menu and leave the pets opaque. Hover resumes at the new position; leaving the visible artwork/menu closes it after 180 ms and restores the saved transparency.
+- Moving the pet window clears click-to-pin and releases DOM/native pointer holds. A native drop click remains suppressed until the next genuine pointer press, so a delayed click cannot pin the hover menu and leave the pets opaque. Hover resumes at the new position; leaving the visible artwork/menu closes it after 800 ms and restores the saved transparency.
 - Cursor-probe failures also clear hover, allowing an unpinned menu to close.
 - Add a localized What's New entry when preparing the next version.
 
@@ -17,3 +17,17 @@ Suggested compact What's New text for these two features:
 - en: Away leaves a back-soon note; at your local mealtimes, resting pups eat rice.
 
 Include the drag-menu fix above in the full release notes too. Keep existing published What's New entries unchanged until the next version is prepared.
+
+## Replay and interactions
+
+- Replay runs at 1×. Time already seen live is marked pale on the timeline, excluded from the replay notice, and skipped during playback. Fully live days are not offered for replay.
+- Hugs and cups show the saved-for-later message only when offline or the last sync could not reach the relay.
+- The hover menu stays open for 800 ms after the pointer leaves, giving more time to reach it.
+- The visiting pup walks behind both pups throughout the hug approach and return.
+
+What's New copy for the next version:
+
+- zh: 原速回放跳过在线时段；离线发送有提示，菜单停留更久
+- zh-Hant: 原速回放跳過在線時段；離線傳送有提示，選單停留更久
+- en: 1× replay skips time seen live; offline sends are labeled; hover menus stay open longer.
+- Include the hug layering fix in the full release notes.
