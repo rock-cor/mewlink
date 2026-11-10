@@ -1,5 +1,5 @@
 import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { restSpans, type ReplayDay } from '../history/days';
+import { liveBarSpans, restSpans, type LiveSpan, type ReplayDay } from '../history/days';
 import { PixelIcon } from './PixelIcon';
 
 interface NoticeProps {
@@ -25,6 +25,8 @@ interface ScrubberProps {
   day: ReplayDay;
   /** 0..1 of the day, rest included. */
   progress: number;
+  /** Stretches seen live (both apps online): marked, and skipped when playing. */
+  live?: readonly LiveSpan[];
   /** Where the replay is, in the partner's own time. */
   timeLabel: string;
   positionLabel: string;
@@ -33,8 +35,8 @@ interface ScrubberProps {
   onClose: () => void;
 }
 
-/** A video-style bar for one day: rest is dotted, click or drag to jump, arrows step 5%. */
-export function ReplayScrubber({ day, progress, timeLabel, positionLabel, closeLabel, onSeek, onClose }: ScrubberProps) {
+/** A video-style bar for one day: rest is dotted, what was seen live is pale, click or drag to jump, arrows step 5%. */
+export function ReplayScrubber({ day, progress, live = [], timeLabel, positionLabel, closeLabel, onSeek, onClose }: ScrubberProps) {
   const track = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<number>();
   // Arrow presses add up even before the seek they started has caught up.
@@ -65,6 +67,8 @@ export function ReplayScrubber({ day, progress, timeLabel, positionLabel, closeL
       <span className="replay-fill" style={{ width: `${shown * 100}%` }} />
       {restSpans(day).map(rest => <i key={rest.from} className="replay-rest"
         style={{ left: `${rest.from * 100}%`, width: `${(rest.to - rest.from) * 100}%` }} />)}
+      {liveBarSpans(day, live).map(span => <i key={span.from} className="replay-live"
+        style={{ left: `${span.from * 100}%`, width: `${(span.to - span.from) * 100}%` }} />)}
       <span className="replay-thumb" style={{ left: `${shown * 100}%` }} />
     </div>
     <button type="button" className="replay-close" aria-label={closeLabel} title={closeLabel} onClick={onClose}><PixelIcon name="close" /></button>

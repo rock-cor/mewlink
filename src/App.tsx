@@ -84,6 +84,9 @@ function loadPendingCups(): PendingCups {
   }
 }
 
+/** How long the pets' menu stays once the pointer leaves a pup or the menu: time to cross the see-through gap between them at an easy pace. */
+const PET_MENU_LINGER_MS = 800;
+
 export default function App() {
   const [locked, setLocked] = useState(false);
   /** A video or music playing here (native audio.rs): my speaker bounces, and TA's copy of it. */
@@ -102,6 +105,8 @@ export default function App() {
   const historyInput = useRef<(previous: InputSignal, current: InputSignal) => void>(() => undefined);
   const liveInput = useRef<(previous: InputSignal, current: InputSignal) => void>(() => undefined);
   const syncNow = useRef<() => Promise<void>>(async () => undefined);
+  /** Whether the last sync reached the relay: a hug or cup sent now goes out at once. */
+  const relayReachable = useRef<boolean>(undefined);
   const historyScreenChange = useRef<() => void>(() => undefined);
   const historyStop = useRef<() => void>(() => undefined);
   const replayingRef = useRef(false);
@@ -512,7 +517,8 @@ export default function App() {
     pairing, enabled: preferences.replayEnabled, activity, workVisual, paused: renderPaused,
     retentionHours: preferences.replayRetentionHours, receiverOffset: receiverUtcOffsetMinutes,
     showTimezone: preferences.timezoneMode !== 'off', language: preferences.language,
-    revision: historyRevision, partnerOffset: partnerUtcOffsetMinutes, onRecord: enqueueEncryptedEvent, durationScale,
+    revision: historyRevision, partnerOffset: partnerUtcOffsetMinutes, partnerLive: companions.partnerLive,
+    onRecord: enqueueEncryptedEvent, durationScale,
     // A recorded hug is TA's, coming to me.
     hugMs: planHug(hugWayFor('self'), reducedMotion).duration,
     displayReady: (target, visual) => !partnerPlayback.transition && partnerPlayback.displayedActivity === target
@@ -752,9 +758,11 @@ export default function App() {
           }
           // Sync also drains the native ratchet outbox, where queued events wait.
           const result = await syncEncryptedEvents(active).catch(async error => {
+            relayReachable.current = false;
             if (error instanceof RelayError && error.code === 'relationship_revoked') await forgetRevokedPair(active);
             throw error;
           });
+          relayReachable.current = true;
           if (stopped || pairingBlockedRef.current || pairingRef.current?.relationshipId !== active.relationshipId) return;
           if (typeof result.partnerOnline === 'boolean') {
             const online = result.partnerOnline;
@@ -1164,7 +1172,9 @@ export default function App() {
       }));
       // Deliver now and have the partner fetch it at once instead of on its next poll.
       void syncNow.current().then(() => live.nudge());
-      showGesture(action, sent.status === 'queued' ? text.interactionQueued : action === 'hug' ? text.hugSent : text.cupSent(text.cups[cupStyle].label), 'partner', {
+      // Every send waits in the outbox first; it is only "saved for later" when the relay cannot be reached now.
+      const offline = !navigator.onLine || relayReachable.current === false;
+      showGesture(action, offline ? text.interactionQueued : action === 'hug' ? text.hugSent : text.cupSent(text.cups[cupStyle].label), 'partner', {
         cupStyle,
         blanketStyle: preferences.blanketStyle,
         receiverActivity: partnerShown,
@@ -1222,7 +1232,7 @@ export default function App() {
     menuCloseTimer.current = window.setTimeout(() => {
       menuCloseTimer.current = undefined;
       setPetMenuOpen(false);
-    }, 180);
+    }, PET_MENU_LINGER_MS);
   }
 
   function pinPetMenu(event: ReactMouseEvent<HTMLButtonElement>) {
@@ -1542,7 +1552,7 @@ export default function App() {
           </div>
         {connected && !settingsOpen && !statisticsOpen && (playing || history.unseen) && <div className="tray-slot tray-partner replay-dock">
           {playing && history.playingDay
-            ? <ReplayScrubber day={history.playingDay} progress={history.progress}
+            ? <ReplayScrubber day={history.playingDay} progress={history.progress} live={history.live}
               timeLabel={partnerClock(dayInstant(history.playingDay, history.progress), history.playingDay.offset)}
               positionLabel={text.replayPosition} closeLabel={text.stopReplay} onSeek={history.seek} onClose={history.stop} />
             : history.unseen && <ReplayNotice shown={petMenuOpen} onReveal={revealPetMenu} onHide={hidePetMenuSoon} label={text.replayNotice(formatDuration(history.unseen.ms, preferences.language), history.unseen.days)}

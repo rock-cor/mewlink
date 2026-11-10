@@ -1,6 +1,7 @@
 import { openDB } from 'idb';
 import type { EncryptedEnvelope, OperationBatch, StoredEvent } from '../domain/types';
 import type { PairingState } from '../pairing/pairing';
+import { addLiveSpan, type LiveSpan } from '../history/days';
 export interface OutboxItem { id: string; envelope: EncryptedEnvelope; stored: StoredEvent }
 export interface HistoryRef {
   id: string; at: string; kind: 'operation.batch' | 'interaction' | 'activity.segment';
@@ -75,6 +76,7 @@ export async function discardRelationshipHistory(relationshipId: string) {
   }
   await tx.objectStore('historyMeta').delete(`draft:${relationshipId}`);
   await tx.objectStore('historyMeta').delete(`seen:${relationshipId}`);
+  await tx.objectStore('historyMeta').delete(`live:${relationshipId}`);
   await tx.done;
 }
 export async function saveHistoryDraft(relationshipId: string, batch?: OperationBatch) {
@@ -94,6 +96,23 @@ export async function markHistorySeen(relationshipId: string, at: number) {
   const previous = await tx.store.get(key);
   await tx.store.put(Math.max(typeof previous === 'number' ? previous : 0, at), key);
   await tx.done;
+}
+const readLiveSpans = (value: unknown): LiveSpan[] => Array.isArray(value)
+  ? addLiveSpan(value.filter((span): span is [number, number] => Array.isArray(span) && span.length === 2
+    && span.every(edge => typeof edge === 'number')), 0, 0)
+  : [];
+/** When TA's pup was live here (both apps online): seen as it happened. */
+export async function watchedLive(relationshipId: string): Promise<LiveSpan[]> {
+  return readLiveSpans(await (await db).get('historyMeta', `live:${relationshipId}`));
+}
+/** Adds a stretch watched live; forgets those older than `keepSince`. Returns them all. */
+export async function markWatchedLive(relationshipId: string, from: number, to: number, keepSince: number) {
+  const tx = (await db).transaction('historyMeta', 'readwrite');
+  const key = `live:${relationshipId}`;
+  const spans = addLiveSpan(readLiveSpans(await tx.store.get(key)), from, to, keepSince);
+  await tx.store.put(spans, key);
+  await tx.done;
+  return spans;
 }
 export async function replayReferences(state: PairingState, since: number, until = Date.now()): Promise<HistoryRef[]> {
   if (!Number.isFinite(since) || !Number.isFinite(until) || since > until) return [];

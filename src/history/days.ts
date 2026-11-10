@@ -4,10 +4,12 @@ import { OPERATION_BATCH_MS } from './operations';
 
 // Replay is offered per day of the partner's own calendar (a day ends at their
 // midnight) and runs on their real clock at its real pace (no fast-forward),
-// from the first record of the day to the last. While the app runs, two minutes without input are recorded as idle
-// and ten as rest, so a longer silence means the app was offline (closed,
-// asleep, recording off): all of it is shown as rest, taking its true share of
-// the bar and of the playback time.
+// from the first record of the day to the last. While the app runs, two
+// minutes without input are recorded as idle and ten as rest, so a longer
+// silence means the app was offline (closed, asleep, recording off): all of it
+// is shown as rest, taking its true share of the bar and of the playback time.
+// While both apps were online, TA's pup was live here: those stretches were
+// seen as they happened, so they are never offered and replay skips them.
 export const REST_GAP_MS = 3 * 60_000;
 /** Replay plays at the partner's real pace; the user can jump anywhere on the bar. */
 export const REPLAY_SPEED = 1;
@@ -88,14 +90,55 @@ export function restingAt(day: ReplayDay, at: number) {
   return day.sessions.some((session, index) => index > 0 && at < session.start && at >= day.sessions[index - 1].end);
 }
 
-/** Time after `seen` (the replay watermark), rest included. */
-export function unseenMs(day: ReplayDay, seen: number) {
-  return Math.max(0, day.end - Math.max(day.start, seen));
+/** A stretch [from, to] (ms) when TA's pup was live here. Lists are sorted and never overlap. */
+export type LiveSpan = readonly [number, number];
+
+/** Adds a stretch watched live, merged with those it touches; drops those that ended before `keepSince`. */
+export function addLiveSpan(spans: readonly LiveSpan[], from: number, to: number, keepSince = -Infinity): LiveSpan[] {
+  const all = [...spans, [from, to] as const].filter(([a, b]) => Number.isFinite(a) && Number.isFinite(b) && b > a && b >= keepSince)
+    .sort((x, y) => x[0] - y[0]);
+  const merged: [number, number][] = [];
+  for (const [a, b] of all) {
+    const last = merged.at(-1);
+    if (last && a <= last[1]) last[1] = Math.max(last[1], b);
+    else merged.push([a, b]);
+  }
+  return merged;
 }
 
-/** Time in sessions after `seen`. */
-export function unseenWorkMs(day: ReplayDay, seen: number) {
-  return day.sessions.reduce((sum, s) => sum + Math.max(0, s.end - Math.max(s.start, seen)), 0);
+/** The stretch watched live that `at` falls in, if any. */
+export function liveSpanAt(live: readonly LiveSpan[], at: number) {
+  return live.find(([from, to]) => at >= from && at < to);
+}
+
+const watchedLiveMs = (from: number, to: number, live: readonly LiveSpan[]) =>
+  live.reduce((sum, [a, b]) => sum + Math.max(0, Math.min(to, b) - Math.max(from, a)), 0);
+
+/** Time after `seen` (the replay watermark), rest included, not watched live. */
+export function unseenMs(day: ReplayDay, seen: number, live: readonly LiveSpan[] = []) {
+  const from = Math.max(day.start, seen);
+  return Math.max(0, day.end - from - watchedLiveMs(from, day.end, live));
+}
+
+/** Time in sessions after `seen`, not watched live. */
+export function unseenWorkMs(day: ReplayDay, seen: number, live: readonly LiveSpan[] = []) {
+  return day.sessions.reduce((sum, s) => {
+    const from = Math.max(s.start, seen);
+    return sum + Math.max(0, s.end - from - watchedLiveMs(from, s.end, live));
+  }, 0);
+}
+
+/** The first moment from `seen` on that was not watched live (the day's end if none). */
+export function firstUnseen(day: ReplayDay, seen: number, live: readonly LiveSpan[] = []) {
+  let at = Math.max(day.start, seen);
+  for (const [from, to] of live) if (at >= from && at < to) at = to;
+  return Math.min(at, day.end);
+}
+
+/** The stretches watched live, as bar positions (0..1). */
+export function liveBarSpans(day: ReplayDay, live: readonly LiveSpan[]) {
+  return live.filter(([from, to]) => to > day.start && from < day.end)
+    .map(([from, to]) => ({ from: dayProgress(day, from), to: dayProgress(day, to) }));
 }
 
 export function formatDuration(ms: number, language: Language) {

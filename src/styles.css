@@ -932,6 +932,12 @@ button { font: inherit; }
   height: 4px;
   background: repeating-linear-gradient(90deg, rgba(255, 250, 247, .9) 0 2px, transparent 2px 4px);
 }
+.replay-live {
+  position: absolute;
+  top: 5px;
+  height: 4px;
+  background: rgba(255, 250, 247, .85);
+}
 .replay-thumb {
   position: absolute;
   top: 2px;

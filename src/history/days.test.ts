@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HistoryRef } from '../storage/events';
-import { dayInstant, dayKey, dayProgress, daySpanMs, formatDuration, groupReplayDays, partnerClock, REST_GAP_MS, restingAt, restSpans, unseenMs, unseenWorkMs } from './days';
+import { addLiveSpan, dayInstant, dayKey, dayProgress, daySpanMs, firstUnseen, formatDuration, groupReplayDays, liveBarSpans, liveSpanAt, partnerClock, REST_GAP_MS, restingAt, restSpans, unseenMs, unseenWorkMs } from './days';
 
 const LONDON = 60;
 const iso = (h: number, m = 0, day = 8) => new Date(Date.UTC(2026, 9, day, h, m)).toISOString();
@@ -52,6 +52,36 @@ describe('replay days', () => {
     expect(Math.round(unseenMs(day, Date.parse(iso(10))) / 60_000)).toBe(180);
     expect(Math.round(unseenWorkMs(day, Date.parse(iso(10))) / 60_000)).toBe(60);
     expect(unseenMs(day, day.end)).toBe(0);
+  });
+
+  it('never offers what was seen live while both apps were online', () => {
+    // 08:00-09:00 London: I was away. 09:00-12:00: both online. 12:00-14:00: away again.
+    const [day] = groupReplayDays(work(8, 7, 0, 6 * 60), LONDON);
+    const live = addLiveSpan([], Date.parse(iso(8)), Date.parse(iso(11)));
+    expect(Math.round(unseenMs(day, 0, live) / 60_000)).toBe(180);
+    expect(Math.round(unseenWorkMs(day, 0, live) / 60_000)).toBe(180);
+    // Watched up to 08:30: the rest of the morning and the afternoon are left.
+    expect(Math.round(unseenMs(day, Date.parse(iso(7, 30)), live) / 60_000)).toBe(150);
+    // Starting where the morning ends jumps to where the live stretch ends.
+    expect(firstUnseen(day, Date.parse(iso(8)), live)).toBe(Date.parse(iso(11)));
+    expect(firstUnseen(day, Date.parse(iso(7, 30)), live)).toBe(Date.parse(iso(7, 30)));
+    expect(liveSpanAt(live, Date.parse(iso(10)))).toEqual([Date.parse(iso(8)), Date.parse(iso(11))]);
+    expect(liveSpanAt(live, Date.parse(iso(11)))).toBeUndefined();
+    const [bar] = liveBarSpans(day, live);
+    expect(bar.from).toBeCloseTo(1 / 6, 6);
+    expect(bar.to).toBeCloseTo(4 / 6, 6);
+    // Seen live from the first record to now: nothing to offer.
+    expect(unseenMs(day, 0, addLiveSpan([], day.start - 1, day.end + 1))).toBe(0);
+  });
+
+  it('keeps live stretches merged, in order, and only as long as replay itself', () => {
+    let live = addLiveSpan([], 100, 200);
+    live = addLiveSpan(live, 150, 260);
+    live = addLiveSpan(live, 500, 600);
+    live = addLiveSpan(live, 10, 20);
+    expect(live).toEqual([[10, 20], [100, 260], [500, 600]]);
+    expect(addLiveSpan(live, 260, 300)).toEqual([[10, 20], [100, 300], [500, 600]]);
+    expect(addLiveSpan(live, 700, 700, 250)).toEqual([[100, 260], [500, 600]]);
   });
 
   it('short gaps are still work, longer ones are rest', () => {
