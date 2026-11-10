@@ -5,6 +5,11 @@ import { compareVersions } from './services/update';
 // it, under the version's title. Keep each to a sentence that fits two short
 // lines; every release from 0.3.31 on needs one (src/whatsNew.test.ts).
 export const WHATS_NEW: Record<string, Record<Language, string>> = {
+  '0.3.46': {
+    zh: '离开有便签，饭点小狗吃饭；原速回放跳过在线时段',
+    'zh-Hant': '離開有便條，飯點小狗吃飯；原速回放跳過在線時段',
+    en: 'Back-soon notes and mealtime pups; 1× replay skips time already seen live.',
+  },
   '0.3.45': {
     zh: '暂时离开和睡觉时间可分别设置，默认 5 和 10 分钟，最长 30 分钟',
     'zh-Hant': '暫時離開和睡覺時間可分別設定，預設 5 和 10 分鐘，最長 30 分鐘',
