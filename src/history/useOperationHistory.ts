@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { ActivityKind, OperationBatch, PlainEvent, StoredEvent, WorkVisual } from '../domain/types';
 import type { PairingState } from '../pairing/pairing';
 import type { InputSignal } from '../platform/activity';
-import { inputBurstReached, INPUT_STRESS_HOLD_MS, trimInputBurst, type InputBurstSample } from '../platform/activity';
 import { historySeen, loadHistoryDraft, markHistorySeen, markWatchedLive, readReplayEvent, replayReferences, saveHistoryDraft, watchedLive } from '../storage/events';
 import { OPERATION_BATCH_MS, OperationRecorder } from './operations';
 import { saveProblem } from './problems';
 import { dayInstant, dayProgress, firstUnseen, groupReplayDays, liveSpanAt, REPLAY_SPEED, REST_GAP_MS, restingAt, unseenMs, unseenWorkMs, type LiveSpan, type ReplayDay } from './days';
 import { condensedReplay, replayFrames, type OperationFrame } from './playback';
+import { HandsPlayer, type Hands } from '../live/protocol';
 import { ACTIVITY_TRANSITION_MS } from '../pet/interaction';
 import type { Language } from '../platform/language';
 
@@ -218,11 +218,22 @@ export function useOperationHistory(options: Options) {
     session.current = true;
     const token = ++generation.current;
     const valid = () => generation.current === token;
-    let releaseTimer: ReturnType<typeof setTimeout> | undefined;
-    let stressUntil = 0;
+    // Recorded input is counts per quarter-second window, as live typing sends
+    // them: the same player turns them back into paw movement.
+    const player = new HandsPlayer();
+    const handTimers = new Set<ReturnType<typeof setTimeout>>();
+    let shownHands: Hands = { keyboard: false, pointer: false, stressed: false };
+    const moveHands = (next: Partial<Hands>, when: number) => {
+      const timer = setTimeout(() => {
+        handTimers.delete(timer);
+        if (!valid()) return;
+        shownHands = { ...shownHands, ...next, stressed: player.stressedAt(Date.now()) };
+        setHands(shownHands);
+      }, Math.max(0, when - Date.now()));
+      handTimers.add(timer);
+    };
     // How far this playback got, in the partner's time.
     let watched = 0;
-    let samples: InputBurstSample[] = [];
     // Nothing from where the previous playback was (a gesture, pressed paws) carries over.
     setCurrent(undefined);
     setHands({ keyboard: false, pointer: false, stressed: false });
@@ -322,17 +333,13 @@ export function useOperationHistory(options: Options) {
         setCurrent(frame);
         if (activity && (frame.activity || !shown || shown === 'rest')) await present(activity, visual);
         if (!valid()) break;
-        samples = trimInputBurst(samples, at);
-        if (frame.keyboard || frame.clicks) {
-          const factor = Math.min(1, 1200 / (frame.sourceSpanMs ?? 1));
-          samples.push({ at, keyboard: Math.floor(frame.keyboard * factor), pointerClicks: Math.floor(frame.clicks * factor) });
-          if (inputBurstReached(samples)) stressUntil = at + INPUT_STRESS_HOLD_MS;
-        }
-        if (frame.keyboard || frame.pointer) {
-          setHands(value => ({ keyboard: frame.keyboard ? !value.keyboard : value.keyboard,
-            pointer: frame.pointer ? !value.pointer : value.pointer, stressed: at < stressUntil }));
-          clearTimeout(releaseTimer);
-          releaseTimer = setTimeout(() => { if (valid()) setHands({ keyboard: false, pointer: false, stressed: false }); }, 110);
+        if (frame.keyboard || frame.pointer || frame.clicks) {
+          const playAt = Date.now();
+          for (const step of player.steps(frame, playAt)) {
+            moveHands({ ...(step.keyboard === undefined ? {} : { keyboard: step.keyboard }), ...(step.pointer === undefined ? {} : { pointer: step.pointer }) }, step.atMs);
+          }
+          // The tense face goes when its time is up, even with no further input.
+          if (player.stressedAt(playAt)) moveHands({}, player.stressedUntilMs);
         }
         if (frame.interaction) {
           // A hug walks there and back; a cup only slides in.
@@ -350,7 +357,7 @@ export function useOperationHistory(options: Options) {
       }
     } catch { if (valid()) setError({ kind: 'play', at: Date.now() }); }
     finally {
-      clearTimeout(releaseTimer);
+      for (const timer of handTimers) clearTimeout(timer);
       // Stopped partway (closed, or jumped elsewhere on the bar): what was
       // watched counts as seen, so the notice picks up from there next time.
       const sameIdentity = () => latest.current.pairing?.relationshipId === identity.relationshipId;

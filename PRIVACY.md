@@ -3,8 +3,11 @@
 MewLink's architecture is designed so raw screen content never leaves a device.
 The application must not collect screenshots, pixels, keystrokes, document
 contents, URLs, or window titles. Local signals are reduced to a coarse state:
-`work`, `meeting`, `leisure`, `idle`, or `rest`. Code, document, and web
-screen variants are selected locally and are not synchronized as separate states.
+`work`, `meeting`, `leisure`, `idle`, or `rest`, and, while working, which of
+five screens the pet shows (code, document, web, AI assistant, MewLink). The
+partner receives that state and screen, whether sound is playing, whether the
+pet is having a meal, a coarse busyness level for the day and a running
+pomodoro timer; never the app's name, a title or an address.
 
 The current developer preview has no account system. Two Macs can pair using a
 private invite and exchange encrypted interaction, companion-color, and optional
@@ -19,6 +22,19 @@ MewLink. Removing ordinary app files does not necessarily remove Keychain or
 Credential Manager entries; unpair in the app before uninstalling.
 Old pairings must be replaced on both devices before using the new protocol.
 The ratchet does not remove plaintext replay history or copies in OS backups.
+
+Replay recording is on by default and can be turned off in Settings. While it
+is on, the app records the same coarse state and screen plus the number of key
+presses, pointer moves and clicks in each 0.25-second window, and sends them
+encrypted end to end to the partner about every ten seconds, so the partner's
+copy of the pet can replay the day. It never records which keys were pressed
+or the instant of a single key press. Typing rhythm, even in quarter-second
+counts, can still say something about what a person is doing; turn recording
+off if that matters. On macOS, key presses made while a password field has
+focus (Secure Event Input) are not counted at all, neither for replay nor for
+the statistics; Windows has no equivalent signal. Recordings are kept
+unencrypted in IndexedDB on both devices for the retention period chosen in
+Settings (12 to 48 hours), then deleted; unpairing deletes them at once.
 
 Live typing is off by default and works only when both people turn it on.
 While both are online, the app sends the number of key presses, pointer moves

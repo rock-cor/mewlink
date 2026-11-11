@@ -19,13 +19,42 @@ describe('operation recording', () => {
     recorder.push(at + 400, 'work', 'document');
     recorder.push(at + 600, 'work', 'document');
     recorder.flush();
-    expect(batches[0].points.map(p => p.slice(0, 4))).toEqual([[0, 0, 0, 0], [30, 2, 8, 1], [400, 0, 0, 0], [600, 0, 0, 0]]);
+    // Input is counted per quarter-second window; a change of screen starts a new point.
+    expect(batches[0].points.map(p => p.slice(0, 4))).toEqual([[0, 2, 8, 1], [250, 0, 0, 0], [500, 0, 0, 0]]);
     expect(Object.keys(batches[0]).sort()).toEqual(['format', 'points', 'startedAt']);
+  });
+  it('records how many keys per quarter second, never when each one was pressed', () => {
+    const batches: OperationBatch[] = [];
+    const recorder = new OperationRecorder(value => batches.push(value));
+    const signal = (keys: number) => ({ keyboardSequence: keys, pointerSequence: 0, pointerClickSequence: 0, recentKind: 'keyboard' as const });
+    // Seven keys at uneven instants, the first 137 ms into a window.
+    const instants = [137, 201, 288, 301, 480, 733, 1_190];
+    instants.forEach((ms, index) => recorder.input(signal(index), signal(index + 1), at + ms, 'work', 'code'));
+    recorder.flush();
+    // The batch starts on the window's edge, and each point is a window with its count.
+    expect(batches[0].startedAt).toBe(new Date(at).toISOString());
+    expect(batches[0].points.map(p => p.slice(0, 2))).toEqual([[0, 2], [250, 3], [500, 1], [1_000, 1]]);
+    expect(batches[0].points.every(point => point[0] % 250 === 0)).toBe(true);
+    expect(validOperationBatch(batches[0])).toBe(true);
+    // The same keys at other instants within the same windows record identically.
+    const again: OperationBatch[] = [];
+    const other = new OperationRecorder(value => again.push(value));
+    [3, 249, 250, 499, 251, 749, 1_001].forEach((ms, index) => other.input(signal(index), signal(index + 1), at + ms, 'work', 'code'));
+    other.flush();
+    expect(again[0]).toEqual(batches[0]);
+    // However many events a window has, the count stays one the receiver accepts.
+    const busy: OperationBatch[] = [];
+    const flood = new OperationRecorder(value => busy.push(value));
+    for (let i = 0; i < 3; i++) flood.push(at + i, 'work', 'code', { keyboard: 999_999, pointer: 999_999, clicks: 999_999 });
+    flood.flush();
+    expect(busy[0].points).toEqual([[0, 1_000_000, 1_000_000, 1_000_000, 0, 0]]);
+    expect(validOperationBatch(busy[0])).toBe(true);
   });
   it('bounds each batch and flushes on duration or backwards wall clock', () => {
     const batches: OperationBatch[] = [];
     const recorder = new OperationRecorder(value => batches.push(value));
-    for (let i = 0; i <= MAX_OPERATION_POINTS; i++) recorder.push(at + i, 'work', 'code');
+    // (A change of screen is its own point even within a window.)
+    for (let i = 0; i <= MAX_OPERATION_POINTS; i++) recorder.push(at + i, 'work', i % 2 ? 'code' : 'web');
     recorder.push(at + 20_000, 'rest', 'code');
     recorder.push(at - 100, 'work', 'web');
     recorder.flush();
@@ -36,7 +65,7 @@ describe('operation recording', () => {
     const batches: OperationBatch[] = [];
     const recorder = new OperationRecorder(value => batches.push(value));
     const counts = { keyboard: 999_999, pointer: 999_999, clicks: 999_999 };
-    for (let i = 0; i < MAX_OPERATION_POINTS; i++) recorder.push(at + i * 30, 'meeting', 'mewlink', counts);
+    for (let i = 0; i < MAX_OPERATION_POINTS; i++) recorder.push(at + i * 30, 'meeting', i % 2 ? 'mewlink' : 'document', counts);
     recorder.flush();
     expect(batches.length).toBeGreaterThan(1);
     expect(batches.reduce((sum, value) => sum + value.points.length, 0)).toBe(MAX_OPERATION_POINTS);

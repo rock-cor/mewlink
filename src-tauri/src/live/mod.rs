@@ -12,10 +12,11 @@ use std::time::Instant;
 pub struct LiveState(pub Arc<Mutex<LiveRooms>>);
 
 /// macOS turns on Secure Event Input while a password field (or `sudo` in a
-/// terminal) has focus. No pulse is sealed then, so typing rhythm in password
-/// entry never leaves the device. Windows has no equivalent signal.
+/// terminal) has focus. No pulse is sealed then, and the key presses are left
+/// out of the input count (resources.rs), so typing rhythm in password entry
+/// never leaves the device. Windows has no equivalent signal.
 #[cfg(target_os = "macos")]
-fn secure_input_active() -> bool {
+pub(crate) fn secure_input_active() -> bool {
     #[link(name = "Carbon", kind = "framework")]
     extern "C" {
         fn IsSecureEventInputEnabled() -> u8;
@@ -24,7 +25,7 @@ fn secure_input_active() -> bool {
     unsafe { IsSecureEventInputEnabled() != 0 }
 }
 #[cfg(not(target_os = "macos"))]
-fn secure_input_active() -> bool {
+pub(crate) fn secure_input_active() -> bool {
     false
 }
 

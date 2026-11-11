@@ -8,15 +8,53 @@ use tauri::{Emitter, Manager};
 pub struct ResourceState {
     pub low_memory: AtomicBool,
     pub input: Mutex<super::InputSignal>,
+    gate: Mutex<KeyGate>,
 }
 
 impl Default for ResourceState {
     fn default() -> Self {
+        let mut gate = KeyGate::default();
         Self {
             low_memory: AtomicBool::new(false),
-            input: Mutex::new(super::platform::input_sample()),
+            input: Mutex::new(gated_input_sample(&mut gate)),
+            gate: Mutex::new(gate),
         }
     }
+}
+
+/// Key presses made while a password field has focus (macOS Secure Event
+/// Input) are left out of the count the webview sees: neither how many nor
+/// when. The replay recording, the statistics and the typing paw all read
+/// that count, so none of them can give away a password's length or rhythm.
+#[derive(Default)]
+pub struct KeyGate {
+    last_raw: Option<u64>,
+    hidden: u64,
+    was_secure: bool,
+}
+
+impl KeyGate {
+    /// The key count to show for the system's `raw` count.
+    pub fn pass(&mut self, raw: u64, secure: bool) -> u64 {
+        let previous = self.last_raw.unwrap_or(raw);
+        // Secure input at either end of the interval hides what was pressed in it.
+        if secure || self.was_secure {
+            self.hidden = self.hidden.saturating_add(raw.saturating_sub(previous));
+        }
+        self.last_raw = Some(raw);
+        self.was_secure = secure;
+        raw.saturating_sub(self.hidden)
+    }
+}
+
+fn gated_input_sample(gate: &mut KeyGate) -> super::InputSignal {
+    let mut signal = super::platform::input_sample();
+    let secure = super::live::secure_input_active();
+    signal.keyboard_sequence = gate.pass(signal.keyboard_sequence, secure);
+    if secure && signal.recent_kind == "keyboard" {
+        signal.recent_kind = "none";
+    }
+    signal
 }
 
 pub fn sample_delay(low_memory: bool, quiet_ms: u128) -> Duration {
@@ -34,7 +72,9 @@ pub fn start_input_monitor(app: tauri::AppHandle) {
         let mut changed_at = Instant::now();
         loop {
             let state = app.state::<ResourceState>();
-            let next = super::platform::input_sample();
+            let next = gated_input_sample(
+                &mut state.gate.lock().unwrap_or_else(|error| error.into_inner()),
+            );
             let changed = {
                 let mut current = state
                     .input
@@ -108,5 +148,24 @@ mod tests {
         assert_eq!(sample_delay(false, 0).as_millis(), 16);
         assert_eq!(sample_delay(false, 2_000).as_millis(), 50);
         assert_eq!(sample_delay(true, 0).as_millis(), 250);
+    }
+
+    #[test]
+    fn keys_pressed_in_a_password_field_are_never_counted() {
+        let mut gate = KeyGate::default();
+        // Counting starts from wherever the system's counter is.
+        assert_eq!(gate.pass(1_000, false), 1_000);
+        assert_eq!(gate.pass(1_005, false), 1_005);
+        // A password field takes focus: its 8 keys, and the Return that leaves it, stay hidden.
+        assert_eq!(gate.pass(1_005, true), 1_005);
+        assert_eq!(gate.pass(1_009, true), 1_005);
+        assert_eq!(gate.pass(1_013, true), 1_005);
+        assert_eq!(gate.pass(1_014, false), 1_005);
+        // Typing afterwards counts again, from where it left off.
+        assert_eq!(gate.pass(1_017, false), 1_008);
+        // If the system's counter starts over, later keys still count one for one
+        // (the webview ignores the step back).
+        assert_eq!(gate.pass(10, false), 1);
+        assert_eq!(gate.pass(12, false), 3);
     }
 }
