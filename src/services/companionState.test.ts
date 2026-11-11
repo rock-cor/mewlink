@@ -16,10 +16,10 @@ function activity(category: ActivityKind, sender = 'bob', at = now): StoredEvent
 }
 
 describe('independent local and remote companions', () => {
-  it('shows idle after the partner exits even while its last activity heartbeat is fresh', () => {
-    for (const category of ['work', 'meeting', 'leisure', 'rest'] as const) {
+  it('sleeps after the partner exits even while its last activity heartbeat is fresh', () => {
+    for (const category of ['work', 'meeting', 'leisure', 'idle'] as const) {
       const result = companionStates(self, [activity(category)], identity, undefined, now, { ...identity, online: false });
-      expect(result.partner.activity).toBe('idle');
+      expect(result.partner.activity).toBe('rest');
       expect(result.partnerLive).toBe(false);
       expect(result.self).toEqual(self);
     }
@@ -28,7 +28,7 @@ describe('independent local and remote companions', () => {
     const events = [activity('work')];
     const online = { ...identity, online: true };
     expect(companionStates(self, events, identity, undefined, now, online).partner.activity).toBe('work');
-    expect(companionStates(self, events, identity, undefined, now + PRESENCE_STALE_MS + 1, online).partner.activity).toBe('idle');
+    expect(companionStates(self, events, identity, undefined, now + PRESENCE_STALE_MS + 1, online).partner.activity).toBe('rest');
   });
   it('shows TA eating from a live heartbeat only (TA’s app decides by TA’s own clock)', () => {
     const eating = activity('rest');
@@ -52,14 +52,14 @@ describe('independent local and remote companions', () => {
     const skin = activity('work');
     skin.event = { ...skin.event, kind: 'profile.skin', payload: { skin: 'sky' } };
     expect(companionStates(self, [activity('work'), skin], identity, undefined, now,
-      { ...identity, online: false }).partner).toEqual({ activity: 'idle', workVisual: 'web', skin: 'sky', audio: false, meal: false });
+      { ...identity, online: false }).partner).toEqual({ activity: 'rest', workVisual: 'web', skin: 'sky', audio: false, meal: false });
   });
-  it('keeps replay historical when the partner is offline, then returns to idle', () => {
+  it('keeps replay historical when the partner is offline, then goes back to sleep', () => {
     const events = [activity('work', 'bob', now - 300_000)];
     const replay = { items: buildReplay(events), frame: 0 };
     const offline = { ...identity, online: false };
     expect(companionStates(self, events, identity, replay, now, offline).partner.activity).toBe('work');
-    expect(companionStates(self, events, identity, undefined, now, offline).partner.activity).toBe('idle');
+    expect(companionStates(self, events, identity, undefined, now, offline).partner.activity).toBe('rest');
   });
   it('ignores missing presence and responses for another relationship or device', () => {
     expect(partnerOnlineFor(identity, undefined)).toBeUndefined();
@@ -81,11 +81,11 @@ describe('independent local and remote companions', () => {
       expect(result.partnerLive).toBe(true);
     }
   });
-  it('only sleeps for an explicit fresh rest event; missing or stale data is unknown', () => {
-    expect(companionStates(self, [], identity, undefined, now).partner.activity).toBe('idle');
-    expect(companionStates(self, [activity('rest')], identity, undefined, now).partner.activity).toBe('rest');
-    const stale = companionStates(self, [activity('rest', 'bob', now - PRESENCE_STALE_MS - 1)], identity, undefined, now);
-    expect(stale.partner.activity).toBe('idle');
+  it('is away only for a fresh away heartbeat; missing or stale data is asleep', () => {
+    expect(companionStates(self, [], identity, undefined, now).partner.activity).toBe('rest');
+    expect(companionStates(self, [activity('idle')], identity, undefined, now).partner.activity).toBe('idle');
+    const stale = companionStates(self, [activity('idle', 'bob', now - PRESENCE_STALE_MS - 1)], identity, undefined, now);
+    expect(stale.partner.activity).toBe('rest');
     expect(stale.partnerLive).toBe(false);
   });
   it('a partner skin update never changes local skin or local activity, on either device', () => {

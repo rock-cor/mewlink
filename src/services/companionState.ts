@@ -42,9 +42,10 @@ export function companionStates(
   const age = latestActivity ? now - Date.parse(latestActivity.event.createdAt) : Infinity;
   const live = partnerOnlineFor(identity, presence) !== false && age >= -60_000 && age <= PRESENCE_STALE_MS;
   const payload = live ? latestActivity?.event.payload as ActivitySegment | undefined : undefined;
-  // Offline/missing/stale live data is idle, never the last working pose.
+  // Offline/missing/stale live data is asleep, never the last working pose,
+  // and never "back soon" (TA's app is not there to come back to the desk).
   // A replay below may still show historical work. Time zones never decide activity.
-  let activity: ActivityKind = payload?.category ?? 'idle';
+  let activity: ActivityKind = payload?.category ?? 'rest';
   let workVisual: WorkVisual = payload?.workVisual ?? 'web';
   // Live only: a replay or a stale heartbeat has no sound, and no meal.
   const audio = Boolean(payload?.audio) && !replay;

@@ -261,7 +261,8 @@ export default function App() {
     paused: renderPaused || !connected,
     desiredActivity: partnerShown,
     desiredWorkVisual: partnerWorkVisual,
-    initialActivity: 'idle',
+    // Asleep until TA's app says otherwise (offline TA sleeps too: services/companionState.ts).
+    initialActivity: 'rest',
     initialWorkVisual: 'web',
     workHandsSettled: !liveShown || (!live.hands.keyboard && !live.hands.pointer),
     transitionDurationMs: Math.round(ACTIVITY_TRANSITION_MS * durationScale),
