@@ -5,7 +5,7 @@ The source changes described below do not upgrade previously downloaded apps.
 
 ## Current protections
 
-- New desktop pairs use vodozemac 0.10.0 Olm Double Ratchet in Rust. Each message
+- New desktop pairs use vodozemac 0.11.2 Olm Double Ratchet in Rust. Each message
   advances a sending chain; fresh DH turns update the root key. Both people must
   update, pair again and compare the 128-bit safety number over a trusted channel.
   The app blocks sharing until local confirmation. Old pairs are paused, not

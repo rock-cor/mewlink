@@ -656,6 +656,50 @@ mod tests {
         .unwrap();
         assert!(stolen.decrypt(&message).is_err());
     }
+    // Sessions saved by an earlier library version (testdata/, throwaway test
+    // keys, written by vodozemac 0.10.0 after five round trips with three
+    // messages each way still in flight) must load and carry on after an
+    // upgrade: an installed app keeps its pairing across updates.
+    #[test]
+    fn sessions_saved_by_vodozemac_0_10_carry_on() {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Saved {
+            alice: Machine,
+            bob: Machine,
+            from_alice: Vec<Envelope>,
+            from_bob: Vec<Envelope>,
+        }
+        let Saved {
+            alice: mut a,
+            bob: mut b,
+            from_alice,
+            from_bob,
+        } = serde_json::from_str(include_str!("testdata/sessions-vodozemac-0.10.0.json")).unwrap();
+        assert!(a.status().verified && b.status().verified);
+        assert_eq!(a.status().safety_number, b.status().safety_number);
+        let (had_a, had_b) = (a.deliveries().len(), b.deliveries().len());
+        // What the old version encrypted arrives after the upgrade, out of order.
+        for i in [2, 0, 1] {
+            b.receive(&from_alice[i]).unwrap();
+            a.receive(&from_bob[i]).unwrap();
+        }
+        assert_eq!(a.deliveries().len(), had_a + 3);
+        assert_eq!(b.deliveries().len(), had_b + 3);
+        // New messages both ways, through fresh DH turns and a restart.
+        for n in 100..108 {
+            let e = a.send(event(&a, n)).unwrap();
+            b.receive(&e).unwrap();
+            let e = b.send(event(&b, n)).unwrap();
+            a.receive(&e).unwrap();
+            if n == 103 {
+                a = copy(&a).unwrap();
+                b = copy(&b).unwrap();
+            }
+        }
+        assert_eq!(a.deliveries().len(), had_a + 11);
+        assert_eq!(b.deliveries().len(), had_b + 11);
+    }
     #[test]
     fn envelopes_round_trip_and_receipts_survive_restart() {
         let (mut a, _) = pair();

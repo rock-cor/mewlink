@@ -8,8 +8,9 @@ to an outside audit service. The installed app and live relay remain unchanged.
 
 ## Protocol and trust boundaries
 
-MewLink uses the released Rust crate `vodozemac = 0.10.0`, with default features
-disabled. `experimental-session-config` enables `SessionConfig::version_2()`:
+MewLink uses the released Rust crate `vodozemac = 0.11.2`, with default features
+disabled (0.10.0 until 2026-11: RUSTSEC-2026-0451, secrets not fully zeroized;
+sessions saved by 0.10.0 load unchanged, and the two versions interoperate). `experimental-session-config` enables `SessionConfig::version_2()`:
 Olm AES-256 plus a full-length HMAC, instead of the stable configuration's
 truncated MAC. This upstream feature is labelled experimental and is an explicit
 review item. MewLink does not implement its own DH or ratchet key schedule.
@@ -182,7 +183,7 @@ all build configuration and tests, and record their final commits/artifact hashe
 | Authentication | Review sealed-invite substitution, bootstrap proof, safety-number construction/UX and the full-MAC experimental feature. No external security conclusion yet. |
 | Short-code abuse | The public create/request/claim endpoints still lack deployment-level abuse controls. Add and test throttling before expanding public beta access. |
 | Website dependency alerts | Four of the original six alerts were addressed by React/RSC 19.2.8, Vite 8.0.16 and esbuild 0.28.1. The remaining two `image-size` DoS findings have a pinned source patch and passing regression tests, including a fresh installation. These dependency changes were published separately in website version 63 with user approval. Raw version-based scanning still reports two high alerts. No suppression or version relabeling was used. The backport has not been independently reviewed; obtain that review and replace it with a verified upstream fix when available. |
-| Rust dependency warnings | The scan reports no vulnerability errors, but seven warnings: six unmaintained transitive crates and a Linux `glib::VariantStrIter` unsoundness warning. Review target reachability and upstream migration; do not describe this as a warning-free dependency audit. |
+| Rust dependency advisories | As of 2026-11-10 `cargo audit` reports four vulnerabilities, all in `zip 4.6.1` (RUSTSEC-2026-0367, -0368, -0369, -0429), and thirteen warnings (unmaintained or unsound transitive crates). `zip` is a Windows-only dependency of `tauri-plugin-updater`, which opens an archive only after the update's minisign signature has been verified, and MewLink's Windows update artifact is an `.exe`, not a zip; no compatible plugin release uses a fixed `zip` yet. Re-run the audit before each release; do not describe this as a clean dependency audit. |
 | Local history | Decrypted replay events remain plaintext in IndexedDB. Ratchet forward secrecy does not protect that history from local compromise. |
 | Physical devices and release identity | Test two actual Macs, offline periods, denied/locked Keychain, crash recovery, signed in-place upgrades and Windows native storage. Developer ID credentials, notarization and independent sign-off are still missing. |
 
@@ -251,7 +252,7 @@ off by default and needs both people to opt in. Not independently reviewed.
 ## Source references
 
 - [vodozemac source and security information](https://github.com/matrix-org/vodozemac),
-  [the pinned release API](https://docs.rs/vodozemac/0.10.0/vodozemac/).
+  [the pinned release API](https://docs.rs/vodozemac/0.11.2/vodozemac/).
 - [Least Authority's 2022 vodozemac report](https://matrix.org/media/Least%20Authority%20-%20Matrix%20vodozemac%20Final%20Audit%20Report.pdf).
   Its historical scope is not this MewLink integration or a current-version certificate.
 - [Signal Double Ratchet specification](https://signal.org/docs/specifications/doubleratchet/)

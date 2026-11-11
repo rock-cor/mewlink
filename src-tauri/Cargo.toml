@@ -22,7 +22,7 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
-vodozemac = { version = "=0.10.0", default-features = false, features = ["experimental-session-config"] }
+vodozemac = { version = "=0.11.2", default-features = false, features = ["experimental-session-config"] }
 chacha20poly1305 = "0.10.1"
 base64 = "0.22"
 sha2 = "0.10"
