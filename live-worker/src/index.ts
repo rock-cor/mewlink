@@ -11,6 +11,7 @@
 // a frame, so a silent socket is never left half-open waiting for one.)
 
 import { DurableObject } from 'cloudflare:workers';
+import { admit, FLOOD_REFUSAL_MS, RATE_BURST, type Bucket } from './limiter';
 
 export interface Env {
   LIVE: DurableObjectNamespace<LiveRoom>;
@@ -21,9 +22,8 @@ export interface Env {
 const PROTOCOL = 'mewlink.v1';
 const ID = /^[A-Za-z0-9_-]{16,64}$/;
 const MAX_FRAME_BYTES = 512;
-const RATE_PER_SECOND = 8;
-const RATE_BURST = 16;
-const OVER_LIMIT_CLOSE_MS = 10_000;
+/** A signed ticket or revocation notice is well under this. */
+const MAX_SIGNED_BYTES = 600;
 const MAX_TICKET_LIFETIME_MS = 10 * 60_000;
 const SWEEP_MS = 30_000;
 const READY_TIMEOUT_MS = 5_000;
@@ -32,16 +32,13 @@ const READY_TIMEOUT_MS = 5_000;
 const ALARM_GRACE_MS = 250;
 
 interface Ticket { r: string; d: string; exp: number }
-interface Attachment {
+interface Attachment extends Bucket {
   relationshipId: string;
   deviceId: string;
   exp: number;
   ready: boolean;
   readyBy: number;
   epoch: number | null;
-  tokens: number;
-  refilledAt: number;
-  overSince?: number;
 }
 
 /** A peer may be mid-close; a failed send or close must not abort the handler. */
@@ -65,7 +62,7 @@ function publicKey(env: Env) {
 
 /** `<base64url payload>.<base64url signature>`; payload = {r, d, exp} for tickets, {r, revoked} for revocations. */
 async function verifySigned<T>(env: Env, token: unknown): Promise<T | undefined> {
-  if (typeof token !== 'string' || token.length > 600) return undefined;
+  if (typeof token !== 'string' || token.length > MAX_SIGNED_BYTES) return undefined;
   const [body, signature, extra] = token.split('.');
   if (!body || !signature || extra !== undefined) return undefined;
   try {
@@ -74,6 +71,25 @@ async function verifySigned<T>(env: Env, token: unknown): Promise<T | undefined>
   } catch {
     return undefined;
   }
+}
+
+/** The request's body as text, or undefined once it is longer than a signed notice can be (it is never read whole). */
+async function shortBody(request: Request): Promise<string | undefined> {
+  if (Number(request.headers.get('Content-Length') ?? 0) > MAX_SIGNED_BYTES || !request.body) return undefined;
+  const reader = request.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    length += value.byteLength;
+    if (length > MAX_SIGNED_BYTES) { await reader.cancel().catch(() => undefined); return undefined; }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  return new TextDecoder().decode(bytes);
 }
 
 async function validTicket(env: Env, token: unknown, relationshipId: string, deviceId: string, now: number) {
@@ -101,7 +117,7 @@ export default {
     if (url.pathname === '/revoke' && request.method === 'POST') {
       // A revocation notice signed by the relay closes the room at once; ticket
       // expiry (5 minutes) is the fallback when a notice is lost.
-      const notice = await verifySigned<{ r: string; revoked: true }>(env, await request.text());
+      const notice = await verifySigned<{ r: string; revoked: true }>(env, await shortBody(request));
       if (!notice || notice.revoked !== true || !ID.test(notice.r)) return new Response('forbidden', { status: 403 });
       await env.LIVE.get(env.LIVE.idFromName(notice.r)).revoke();
       return new Response(null, { status: 204 });
@@ -111,6 +127,9 @@ export default {
 };
 
 export class LiveRoom extends DurableObject<Env> {
+  /** Devices closed for flooding, and until when they are refused (kept only while the room is awake). */
+  private flooded = new Map<string, number>();
+
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     // Keepalive pings are answered without waking the object.
@@ -124,6 +143,9 @@ export class LiveRoom extends DurableObject<Env> {
     const deviceId = url.searchParams.get('deviceId')!;
     const exp = Number(request.headers.get('X-Ticket-Expires'));
     if (await this.ctx.storage.get('revoked')) return new Response('revoked', { status: 410 });
+    const refusedUntil = this.flooded.get(deviceId) ?? 0;
+    if (refusedUntil > Date.now()) return new Response('rate limited', { status: 429 });
+    this.flooded.delete(deviceId);
     // Two devices per room; a reconnecting device replaces its own old socket.
     const others = new Set(this.entries().map(entry => entry.deviceId).filter(id => id !== deviceId));
     if (others.size >= 2) return new Response('room full', { status: 409 });
@@ -146,18 +168,15 @@ export class LiveRoom extends DurableObject<Env> {
     }
     const now = Date.now();
     if (state.exp <= now) return close(ws, 1008, 'ticket_expired');
-    // Token bucket: drop frames beyond the rate; close a socket that stays over it.
-    state.tokens = Math.min(RATE_BURST, state.tokens + (now - state.refilledAt) / 1000 * RATE_PER_SECOND);
-    state.refilledAt = now;
-    if (state.tokens < 1) {
-      state.overSince ??= now;
-      ws.serializeAttachment(state);
-      if (now - state.overSince > OVER_LIMIT_CLOSE_MS) close(ws, 1008, 'rate_limited');
-      return;
-    }
-    state.tokens -= 1;
-    state.overSince = undefined;
+    // Token bucket (limiter.ts): drop frames beyond the rate; close a socket
+    // that stays over it, and refuse that device for a while.
+    const admitted = admit(state, now);
     ws.serializeAttachment(state);
+    if (admitted === 'close') {
+      this.flooded.set(state.deviceId, now + FLOOD_REFUSAL_MS);
+      return close(ws, 1008, 'rate_limited');
+    }
+    if (admitted === 'drop') return;
 
     let frame: { t?: unknown; ticket?: unknown; e?: unknown };
     try { frame = JSON.parse(message); } catch { return close(ws, 1003, 'invalid_frame'); }
