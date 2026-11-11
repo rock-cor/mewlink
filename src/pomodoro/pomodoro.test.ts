@@ -45,6 +45,8 @@ describe('pomodoro', () => {
     expect(fromPayload({ ...toPayload(pomodoro), startedAt: 'soon' }, t0)).toBeUndefined();
     expect(fromPayload({ ...toPayload(pomodoro), id: 7 }, t0)).toBeUndefined();
     expect(fromPayload({ ...toPayload(pomodoro), startedAt: new Date(t0 + 3_600_000).toISOString() }, t0)).toBeUndefined();
+    // The other clock a little ahead: it starts now here, never before it has begun.
+    expect(fromPayload({ ...toPayload(pomodoro), startedAt: new Date(t0 + 200_000).toISOString() }, t0)).toEqual({ ...pomodoro, startedAt: t0 });
     // Long over: nothing to show.
     expect(fromPayload(toPayload(pomodoro), t0 + POMODORO_MS + RING_MS)).toBeUndefined();
     expect(fromPayload(null, t0)).toBeUndefined();

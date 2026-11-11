@@ -81,6 +81,13 @@ describe('independent local and remote companions', () => {
       expect(result.partnerLive).toBe(true);
     }
   });
+  it('shows an older version\'s activity name as today\'s, never a pose the pup does not have', () => {
+    for (const [sent, shown] of [['coding', 'work'], ['reading', 'work'], ['browsing', 'work'], ['video', 'leisure'], ['dancing', 'rest']] as const) {
+      const event = activity('work');
+      event.event.payload = { ...event.event.payload, category: sent } as unknown as typeof event.event.payload;
+      expect(companionStates(self, [event], identity, undefined, now).partner.activity).toBe(shown);
+    }
+  });
   it('is away only for a fresh away heartbeat; missing or stale data is asleep', () => {
     expect(companionStates(self, [], identity, undefined, now).partner.activity).toBe('rest');
     expect(companionStates(self, [activity('idle')], identity, undefined, now).partner.activity).toBe('idle');

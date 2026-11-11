@@ -11,7 +11,9 @@ export function usePomodoroClock(pomodoro: Pomodoro | undefined) {
     if (!pomodoro) return;
     const next = nextPhaseChange(pomodoro, Date.now());
     const wait = Math.min(15_000, next === undefined ? 15_000 : next - Date.now());
-    const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, now < pomodoro.startedAt ? 0 : wait));
+    // A time read before this pomodoro began is stale: read it again at once (or when it begins, never in a loop).
+    const stale = Math.min(15_000, Math.max(0, pomodoro.startedAt - Date.now()));
+    const timer = window.setTimeout(() => setNow(Date.now()), Math.max(0, now < pomodoro.startedAt ? stale : wait));
     return () => window.clearTimeout(timer);
   }, [pomodoro, now]);
   return now;

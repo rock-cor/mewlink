@@ -1,4 +1,4 @@
-import type { ActivityKind, ActivitySegment, BlanketStyle, CupStyle, InteractionKind, InteractionPayload, StoredEvent, WorkVisual } from '../domain/types';
+import { normalizeActivity, type ActivityKind, type ActivitySegment, type BlanketStyle, type CupStyle, type InteractionKind, type InteractionPayload, type StoredEvent, type WorkVisual } from '../domain/types';
 import { replayClock } from '../platform/clock';
 import type { Language } from '../settings/preferences';
 export interface ReplayItem { id: string; at: string; label: string; icon: string; clockLabel: string; activity?: ActivityKind; workVisual?: WorkVisual; interaction?: InteractionKind; cupStyle?: CupStyle; blanketStyle?: BlanketStyle }
@@ -8,11 +8,6 @@ const labels = {
   en: { work: 'Focused on work', meeting: 'In a meeting', leisure: 'Taking a break', idle: 'Away for a moment', rest: 'Resting', water: 'Reminded you to drink water', hug: 'Sent you a hug' }
 } as const;
 const icons = { work: '⌨️', meeting: '🎧', leisure: '▶️', idle: '🐾', rest: '💤', water: '☕', hug: '🫂' } as const;
-const normalizeActivity = (category: string): ActivityKind => {
-  if (category === 'coding' || category === 'reading' || category === 'browsing') return 'work';
-  if (category === 'video') return 'leisure';
-  return category as ActivityKind;
-};
 export function buildReplay(events: StoredEvent[], receiverUtcOffsetMinutes?: number, showTimezone = true, language: Language = 'zh'): ReplayItem[] {
   const localizedLabels = labels[language];
   return events.filter(stored => stored.direction === 'in').sort((left, right) => Date.parse(left.event.createdAt) - Date.parse(right.event.createdAt)).flatMap(({ event }) => {

@@ -59,7 +59,12 @@ describe('durable history and encrypted outbox', () => {
     await markHistorySeen(one.relationshipId, 100);
     await markHistorySeen(one.relationshipId, 20);
     expect(await historySeen(one.relationshipId)).toBe(100);
+    // What the partner sent (a hug, heartbeats) is kept with the events, and goes with the relationship too.
+    const hug = (identity: typeof one): PlainEvent => ({ id: crypto.randomUUID(), version: 1, relationshipId: identity.relationshipId,
+      senderDeviceId: identity.partnerDeviceId, createdAt: new Date().toISOString(), kind: 'interaction', payload: { action: 'hug' } });
+    for (const identity of [one, two]) await putEvent({ event: hug(identity), direction: 'in', status: 'delivered', receivedAt: new Date().toISOString() });
     await discardRelationshipHistory(one.relationshipId);
+    expect((await listEvents()).map(stored => stored.event.relationshipId)).toEqual([two.relationshipId]);
     expect(await pendingOutgoing(one)).toEqual([]);
     expect(await loadHistoryDraft(one.relationshipId)).toBeUndefined();
     expect((await pendingOutgoing(two)).length).toBe(1);

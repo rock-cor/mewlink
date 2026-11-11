@@ -64,7 +64,7 @@ const ease = (t: number) => 1 - (1 - t) ** 3;
 function pose(pomodoro: Pomodoro, now: number, atPaw: boolean, x: number) {
   const home = { x, y: SPOT.y };
   const lift = atPaw ? PAW : { x: home.x, y: home.y - 26 };
-  const elapsed = now - pomodoro.startedAt;
+  const elapsed = Math.max(0, now - pomodoro.startedAt);
   const phase = pomodoroPhase(pomodoro, now);
   if (phase === 'winding') {
     const pop = Math.min(1, elapsed / 250);

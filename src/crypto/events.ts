@@ -1,5 +1,6 @@
-import { petSkins, workVisuals, type EncryptedEnvelope, type PlainEvent } from '../domain/types';
+import { blanketStyles, cupStyles, petSkins, workVisuals, type EncryptedEnvelope, type PlainEvent } from '../domain/types';
 import { validOperationBatch } from '../history/operations';
+import { MAX_UTC_OFFSET_MINUTES } from '../platform/clock';
 
 type Sodium = typeof import('libsodium-wrappers-sumo').default;
 let sodiumPromise: Promise<Sodium> | undefined;
@@ -15,25 +16,44 @@ export async function newDemoKey(): Promise<Uint8Array> { const sodium = await r
 export async function encodeSecret(bytes: Uint8Array): Promise<string> { return b64(await readySodium(), bytes); }
 export async function decodeSecret(value: string): Promise<Uint8Array> { return unb64(await readySodium(), value); }
 
-export function isPlainEvent(value: unknown): value is PlainEvent {
+/** A sender's clock may run ahead of this one, but an event dated later than this is refused. */
+export const MAX_CLOCK_AHEAD_MS = 24 * 3_600_000;
+/** An instant exactly as `toISOString` writes it: stored events are ordered and pruned by this text. */
+const canonicalInstant = (value: unknown): value is string => {
+  if (typeof value !== 'string') return false;
+  const at = Date.parse(value);
+  return Number.isFinite(at) && new Date(at).toISOString() === value;
+};
+const oneOf = (list: readonly string[], value: unknown) => value === undefined || (typeof value === 'string' && list.includes(value));
+
+/**
+ * Whether a decrypted event is well formed. Everything in it is the other
+ * person's to choose, so each field the app acts on is checked here: a date
+ * that sorts and is not far in the future (or the event would never be
+ * pruned), a real time zone, and only names the app knows.
+ */
+export function isPlainEvent(value: unknown, now = Date.now()): value is PlainEvent {
   if (!value || typeof value !== 'object') return false;
   const event = value as Record<string, unknown>;
   if (event.version !== 1 || typeof event.id !== 'string' || event.id.length > 80
     || typeof event.relationshipId !== 'string' || typeof event.senderDeviceId !== 'string'
-    || typeof event.createdAt !== 'string' || typeof event.payload !== 'object' || !event.payload) return false;
+    || !canonicalInstant(event.createdAt) || Date.parse(event.createdAt) > now + MAX_CLOCK_AHEAD_MS
+    || typeof event.payload !== 'object' || !event.payload) return false;
+  const offset = event.senderUtcOffsetMinutes;
+  if (offset !== undefined && (typeof offset !== 'number' || !Number.isFinite(offset) || Math.abs(offset) > MAX_UTC_OFFSET_MINUTES)) return false;
   const payload = event.payload as Record<string, unknown>;
-  if (event.kind === 'operation.batch') return Number.isFinite(Date.parse(event.createdAt))
-    && validOperationBatch(payload) && event.createdAt === payload.startedAt;
+  if (event.kind === 'operation.batch') return validOperationBatch(payload) && event.createdAt === payload.startedAt;
   if (event.kind === 'cup.consumed') return typeof payload.cupEventId === 'string' && payload.cupEventId.length > 0 && payload.cupEventId.length <= 80;
   if (event.kind === 'interaction') {
-    return payload.action === 'water' || payload.action === 'hug';
+    // The styles pick artwork by name: only the app's own names.
+    return (payload.action === 'water' || payload.action === 'hug')
+      && oneOf(cupStyles, payload.cupStyle) && oneOf(blanketStyles, payload.blanketStyle);
   }
   if (event.kind === 'activity.segment') {
     return typeof payload.category === 'string'
       && ['work', 'meeting', 'leisure', 'idle', 'rest', 'coding', 'reading', 'video', 'browsing'].includes(payload.category)
       && typeof payload.startedAt === 'string'
       && typeof payload.endedAt === 'string'
-      && Number.isFinite(Date.parse(event.createdAt))
       && Number.isFinite(Date.parse(payload.startedAt))
       && Number.isFinite(Date.parse(payload.endedAt))
       && (payload.workVisual === undefined || workVisuals.includes(payload.workVisual as (typeof workVisuals)[number]));

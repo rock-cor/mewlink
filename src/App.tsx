@@ -431,6 +431,8 @@ export default function App() {
       setPairingStatus(authorizationFailure(error) ? textRef.current.keychainAuthorizationRequired : textRef.current.secureStorageError);
       throw new SecureStorageError(error);
     }
+    // What was kept about the ended relationship goes too, as when unpairing here.
+    await discardRelationshipHistory(active.relationshipId).catch(() => undefined);
     pairingRef.current = undefined;
     setPairing(undefined);
     setEvents([]);

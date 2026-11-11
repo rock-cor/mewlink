@@ -65,9 +65,10 @@ export async function acknowledgeOutgoing(items: OutboxItem[]) {
   }
   await tx.done;
 }
+/** Everything kept about a relationship that has ended: its events, recordings, outbox and replay marks. */
 export async function discardRelationshipHistory(relationshipId: string) {
-  const tx = (await db).transaction(['history', 'outbox', 'historyMeta'], 'readwrite');
-  for (const name of ['history', 'outbox']) {
+  const tx = (await db).transaction(['events', 'history', 'outbox', 'historyMeta'], 'readwrite');
+  for (const name of ['events', 'history', 'outbox']) {
     let cursor = await tx.objectStore(name).openCursor();
     while (cursor) {
       if ((cursor.value.event ?? cursor.value.envelope).relationshipId === relationshipId) await cursor.delete();

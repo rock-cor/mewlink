@@ -1,4 +1,4 @@
-import type { ActivityKind, ActivitySegment, PetSkin, StoredEvent, WorkVisual } from '../domain/types';
+import { normalizeActivity, type ActivityKind, type ActivitySegment, type PetSkin, type StoredEvent, type WorkVisual } from '../domain/types';
 import type { PairingState } from '../pairing/pairing';
 import type { ReplayItem } from './replay';
 
@@ -45,7 +45,8 @@ export function companionStates(
   // Offline/missing/stale live data is asleep, never the last working pose,
   // and never "back soon" (TA's app is not there to come back to the desk).
   // A replay below may still show historical work. Time zones never decide activity.
-  let activity: ActivityKind = payload?.category ?? 'rest';
+  // (An older version's name for an activity is mapped to today's: an unknown one must never reach the pup.)
+  let activity: ActivityKind = payload ? normalizeActivity(payload.category) : 'rest';
   let workVisual: WorkVisual = payload?.workVisual ?? 'web';
   // Live only: a replay or a stale heartbeat has no sound, and no meal.
   const audio = Boolean(payload?.audio) && !replay;

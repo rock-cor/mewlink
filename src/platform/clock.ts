@@ -1,6 +1,6 @@
 import type { Language } from './language';
 
-const MAX_UTC_OFFSET_MINUTES = 14 * 60;
+export const MAX_UTC_OFFSET_MINUTES = 14 * 60;
 
 export interface ReplayClock {
   senderUtcOffsetMinutes?: number;

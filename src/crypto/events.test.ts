@@ -1,7 +1,7 @@
 import sodium from 'libsodium-wrappers-sumo';
 import { describe, expect, it } from 'vitest';
 import { petSkins, type EncryptedEnvelope, type PlainEvent } from '../domain/types';
-import { decryptEvent, encryptEvent, newDemoKey } from './events';
+import { decryptEvent, encryptEvent, isPlainEvent, MAX_CLOCK_AHEAD_MS, newDemoKey } from './events';
 
 const statisticsSnapshots = {
   day: { input: { keyboard: 31, pointer: 12 }, workVisual: { code: 3_000, document: 2_000, web: 1_000, ai: 900, mewlink: 400 }, activity: { work: 7_300, meeting: 500, idle: 200 }, bars: Array.from({ length: 6 }, (_, index) => ({ label: `${index * 4}:00`, keyboard: index, pointer: index + 1 })) },
@@ -104,6 +104,31 @@ describe('encrypted event compatibility', () => {
     await expect(decryptEvent(await encryptEvent(event, 'recipientDevice001', 5, key), key)).resolves.toEqual(event);
     const bad = { ...event, payload: { ...event.payload, snapshots: { ...statisticsSnapshots, day: { ...statisticsSnapshots.day, pomodoros: -1 } } } } as PlainEvent;
     await expect(decryptEvent(await encryptEvent(bad, 'recipientDevice001', 6, key), key)).rejects.toThrow('metadata mismatch');
+  });
+
+  it('refuses what a modified partner app could use against this one', () => {
+    const now = Date.parse('2026-11-10T08:00:00.000Z');
+    const base = { id: 'event-1', version: 1, relationshipId: 'relationshipTest01', senderDeviceId: 'partnerDevice0001',
+      createdAt: '2026-11-10T07:59:00.000Z', senderUtcOffsetMinutes: 480 };
+    const hug = { ...base, kind: 'interaction', payload: { action: 'hug', blanketStyle: 'mint' } };
+    const cup = { ...base, kind: 'interaction', payload: { action: 'water', cupStyle: 'bottle' } };
+    const heartbeat = { ...base, kind: 'activity.segment', payload: { category: 'work', workVisual: 'code', startedAt: base.createdAt, endedAt: base.createdAt } };
+    for (const event of [hug, cup, heartbeat, { ...hug, senderUtcOffsetMinutes: undefined }, { ...hug, senderUtcOffsetMinutes: -720 }]) expect(isPlainEvent(event, now)).toBe(true);
+    // A date that would never be pruned, or does not sort as text.
+    for (const createdAt of ['9999-01-01T00:00:00.000Z', new Date(now + MAX_CLOCK_AHEAD_MS + 1).toISOString(), '2026-11-10', 'Nov 10 2026', 'x', '']) {
+      expect(isPlainEvent({ ...hug, createdAt }, now)).toBe(false);
+    }
+    // A clock a few hours ahead is still accepted.
+    expect(isPlainEvent({ ...hug, createdAt: new Date(now + 3 * 3_600_000).toISOString() }, now)).toBe(true);
+    // A time zone that is not one: replay would fail to read the day.
+    for (const senderUtcOffsetMinutes of [1e300, -1e9, 841, Number.NaN, Infinity, '480', {}, null]) {
+      expect(isPlainEvent({ ...hug, senderUtcOffsetMinutes }, now)).toBe(false);
+    }
+    // Styles choose artwork by name: no other text.
+    expect(isPlainEvent({ ...hug, payload: { action: 'hug', blanketStyle: 'x work-ai' } }, now)).toBe(false);
+    expect(isPlainEvent({ ...cup, payload: { action: 'water', cupStyle: 'settings-panel pixel-panel' } }, now)).toBe(false);
+    expect(isPlainEvent({ ...cup, payload: { action: 'water', cupStyle: 7 } }, now)).toBe(false);
+    expect(isPlainEvent({ ...heartbeat, payload: { ...heartbeat.payload, category: 'dancing' } }, now)).toBe(false);
   });
 
   it('rejects malformed decrypted statistics', async () => {

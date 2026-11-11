@@ -67,7 +67,7 @@ describe('native ratchet boundary', () => {
     const state = { ...await createPairingState(), ratchet: metadata };
     const incoming = Array.from({ length: 100 }, (_, index) => ({ receipt: String(index), event: {
       version: 1, id: String(index), relationshipId: state.relationshipId, senderDeviceId: 'partner_device_123',
-      createdAt: '2026-09-09T00:00:00Z', kind: 'interaction', payload: { action: 'hug' },
+      createdAt: '2026-09-09T00:00:00.000Z', kind: 'interaction', payload: { action: 'hug' },
     } }));
     const fetcher = vi.fn();
     const port = vi.fn(async (operation: string) => operation === 'status'

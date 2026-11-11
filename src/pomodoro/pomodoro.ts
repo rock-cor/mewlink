@@ -77,7 +77,8 @@ export function fromPayload(value: unknown, now = Date.now()): Pomodoro | undefi
     || durationMs < MIN_MS || durationMs > MAX_MS) return undefined;
   // A start far in the future is a broken clock, not a timer.
   if (start > now + 5 * 60_000) return undefined;
-  const pomodoro = { id, startedAt: start, durationMs };
+  // A little in the future is the other clock running ahead: it starts now here.
+  const pomodoro = { id, startedAt: Math.min(start, now), durationMs };
   return pomodoroPhase(pomodoro, now) === 'over' ? undefined : pomodoro;
 }
 

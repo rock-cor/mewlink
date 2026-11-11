@@ -1,5 +1,11 @@
 export const activityKinds = ['work', 'meeting', 'leisure', 'idle', 'rest'] as const;
 export type ActivityKind = (typeof activityKinds)[number];
+/** Names older versions sent for an activity. Events are checked on arrival (crypto/events.ts), so nothing else gets here. */
+export function normalizeActivity(category: string): ActivityKind {
+  if (category === 'coding' || category === 'reading' || category === 'browsing') return 'work';
+  if (category === 'video') return 'leisure';
+  return (activityKinds as readonly string[]).includes(category) ? category as ActivityKind : 'rest';
+}
 /** What a pup's sprite shows: its activity, or, resting at a mealtime of its own clock, a meal (pet/meal.ts). */
 export type ShownActivity = ActivityKind | 'meal';
 export const workVisuals = ['code', 'document', 'web', 'ai', 'mewlink'] as const;
