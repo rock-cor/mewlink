@@ -41,7 +41,7 @@ const id = () => b64(randomBytes(18));
 // --- XChaCha20-Poly1305 pulses, as the app would send them ------------------
 let sodium;
 try {
-  sodium = (await import(resolve(root, '../../../node_modules/libsodium-wrappers-sumo/dist/modules-sumo-esm/libsodium-wrappers.mjs'))).default;
+  sodium = (await import('libsodium-wrappers-sumo')).default;
   await sodium.ready;
 } catch { sodium = undefined; }
 const PLAINTEXT_BYTES = 32;

@@ -6,3 +6,16 @@ What's New:
 - zh: TA 离线或尚未同步时，小狗会睡觉；在线离开仍显示便签
 - zh-Hant: TA 離線或尚未同步時，小狗會睡覺；在線離開仍顯示便條
 - en: Offline pups sleep; the back-soon note appears when TA is online and away.
+
+## Replay privacy and stability
+
+- Validate partner-supplied activity, styles, timestamps and time zones; remove relationship event rows when unpairing or revocation is confirmed.
+- Record replay input counts in aligned 250 ms windows and use the live HandsPlayer during replay. On macOS, Secure Event Input key presses are excluded from native key counts. Clarify that local replay recordings are not encrypted.
+- Harden live Worker rate limiting and bound revocation request bodies; deploy this Worker update only after explicit approval.
+- Pin third-party CI/release actions, restrict updater signing secrets to the steps that need them, and disallow Windows downgrades.
+- Upgrade vodozemac and TLS dependencies, including compatibility coverage for saved vodozemac 0.10 sessions. The review identifies remaining zip advisories via tauri-plugin-updater.
+
+Suggested additional What's New copy:
+- zh: 回放隐私和稳定性修复；强化事件校验与配对数据清理
+- zh-Hant: 回放隱私與穩定性修復；強化事件驗證與配對資料清理
+- en: Replay privacy and stability fixes, stricter event checks and pairing-data cleanup.
