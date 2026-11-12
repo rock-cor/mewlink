@@ -7,6 +7,7 @@ import type { PairingState } from '../../src/pairing/pairing';
 import type { ActivityKind, PlainEvent, StoredEvent, WorkVisual } from '../../src/domain/types';
 import { SpriteCanvas } from '../../src/pet/SpriteCanvas';
 import { ReplayNotice, ReplayScrubber } from '../../src/components/ReplayControls';
+import { FLIP_MS, useReplayFlip } from '../../src/pet/replayFlip';
 import { dayInstant, daySpanMs, formatDuration, partnerClock } from '../../src/history/days';
 import '../../src/settings-panel.css';
 import { transitionAssetName, useActivityPlayback } from '../../src/pet/activityPlayback';
@@ -31,9 +32,14 @@ export function Checks() {
   const replay = useOperationHistory({ pairing: identity, enabled, paused, activity: 'work', workVisual: 'code',
     retentionHours: 48, receiverOffset: -420, partnerOffset: 480, showTimezone: true, language: 'zh', revision, durationScale: 0.2, onRecord, partnerLive,
     displayReady: (activity, visual) => ready.current(activity, visual) });
-  const playback = useActivityPlayback({ desiredActivity: replay.playing ? replay.display.activity : 'work',
-    desiredWorkVisual: replay.playing ? replay.display.workVisual : 'web', initialActivity: 'work', initialWorkVisual: 'web',
-    workHandsSettled: !replay.hands.keyboard && !replay.hands.pointer, paused, transitionDurationMs: 960 });
+  // As in the app: TA's pup turns over to its mirrored replay side, and its scene changes mid-turn.
+  const flip = useReplayFlip(replay.playing, false, 1);
+  const lastDisplay = useRef(replay.display);
+  if (replay.playing) lastDisplay.current = replay.display;
+  const shownDisplay = flip.replayShown ? (replay.playing ? replay.display : lastDisplay.current) : undefined;
+  const playback = useActivityPlayback({ desiredActivity: shownDisplay?.activity ?? 'work',
+    desiredWorkVisual: shownDisplay?.workVisual ?? 'web', initialActivity: 'work', initialWorkVisual: 'web',
+    workHandsSettled: !replay.hands.keyboard && !replay.hands.pointer, paused, transitionDurationMs: 960, instant: flip.flipping });
   ready.current = (activity, visual) => !playback.transition && playback.displayedActivity === activity
     && (activity !== 'work' || playback.displayedWorkVisual === visual);
   const frame = replay.current;
@@ -93,7 +99,9 @@ export function Checks() {
     <p role="status">{replay.playing ? 'Playing' : 'Stopped'} · {paused ? 'Paused' : 'Running'} · {enabled ? 'Enabled' : 'Disabled'} · {replay.error ? 'ERROR' : 'No errors'}</p>
     <p>{report}</p><p>Current: {replay.current?.id ?? 'none'} · {replay.current?.clockLabel} · interaction {replay.current?.interaction ?? 'none'}</p>
     <p>Rendered: {playback.displayedActivity} / {playback.displayedWorkVisual} / {playback.transition ? 'transition' : 'settled'}</p>
-    <div className="pet-avatar partner-pet" style={{ position: 'relative', height: 300, width: 340 }}>
+    <div className={`pet-avatar partner-pet ${flip.mirrored ? 'replay-side' : ''} ${flip.replayShown ? 'replay-scene' : ''} ${flip.flipping ? 'flipping' : ''}`}
+      data-testid="ta" style={{ position: 'relative', height: 300, width: 340, '--flip-ms': `${FLIP_MS}ms` } as CSSProperties}
+      onClick={() => { void replay.start(replay.playing || !replay.unseen ? {} : { unseen: true }); }}>
       <SpriteCanvas skin="mint" paused={paused} onLoopBoundary={playback.handleLoopBoundary}
         className={`pet-sprite partner-sprite ${playback.displayedActivity} ${playback.displayedActivity === 'work' ? 'work-' + playback.displayedWorkVisual : ''} input-${playback.transition ? 'none' : visualInputForActivity(playback.displayedActivity, replay.hands.keyboard, replay.hands.pointer)} ${playback.transition ? 'transition-source-frame' : ''}`} />
       {playback.transition && <SpriteCanvas key={playback.transition.key} skin="mint" paused={paused}

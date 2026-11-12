@@ -216,6 +216,17 @@ button { font: inherit; }
   transition: transform 180ms cubic-bezier(.2, .8, .2, 1), right 180ms cubic-bezier(.2, .8, .2, 1);
 }
 
+/* TA's pup has two sides (pet/replayFlip.ts): TA now, and, mirrored, the
+   replay of TA's day. Turning over squeezes it to a line and opens it again
+   the other way round; its scene changes at the middle (.replay-scene). */
+.partner-pet.replay-side { transform: scale(var(--partner-pet-scale, 1)) scaleX(-1); }
+.partner-pet.flipping {
+  transition: transform var(--flip-ms, 460ms) cubic-bezier(.45, 0, .55, 1), right 180ms cubic-bezier(.2, .8, .2, 1);
+}
+@media (prefers-reduced-motion: reduce) {
+  .partner-pet { transition: none; }
+}
+
 /* Keyboard focus on a pup: a short mark under it, not a ring round its
    whole (mostly see-through) box. */
 .pet-avatar:focus-visible::after {

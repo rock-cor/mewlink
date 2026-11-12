@@ -20,6 +20,8 @@ const scale = Number(params.get('size') ?? 100) / 100;
 const distance = petDistance(Number(params.get('distance') ?? 100));
 const speed = Number(params.get('speed') ?? 1);
 const blanket = (params.get('blanket') ?? 'blush') as BlanketStyle;
+// ?replay: TA's pup on its mirrored replay side.
+const mirrored = params.has('replay');
 const visual = 'code';
 const spriteClass = (scene: HugScene) => scene === 'work' ? `pet-sprite work work-${visual} input-none` : `pet-sprite ${scene}`;
 
@@ -27,7 +29,7 @@ export function Checks() {
   const [id, setId] = useState('hug-0');
   const [moment, setMoment] = useState<HugMoment>();
   const now = moment?.id === id ? moment : undefined;
-  const geometry = { selfScale: scale, partnerScale: scale, distance };
+  const geometry = { selfScale: scale, partnerScale: scale, distance, partnerMirrored: mirrored };
   const pair = hugSkins(target, skins.self, skins.partner);
   const sender = target === 'self' ? 'partner' : 'self';
   const role = (side: 'self' | 'partner') => side === target ? 'receiver' as const : 'sender' as const;
@@ -38,7 +40,7 @@ export function Checks() {
     '--hug-hold-duration': `${3000 * speed}ms` } as CSSProperties}>
     <section className="pet-zone" style={{ '--tray-height': '50px' } as CSSProperties}>
       <div className="pet-pair paired interacting interaction-hug">
-        {(['self', 'partner'] as const).map(side => <button key={side} className={`pet-avatar ${side}-pet ${hugAvatarClass(role(side), now)}`}>
+        {(['self', 'partner'] as const).map(side => <button key={side} className={`pet-avatar ${side}-pet ${side === 'partner' && mirrored ? 'replay-side replay-scene' : ''} ${hugAvatarClass(role(side), now)}`}>
           <SpriteCanvas skin={skins[side]} paused={false} className={`${spriteClass(scenes[side])} ${side === 'partner' ? 'partner-sprite' : ''} ${
             side === target && scenes[side] === 'rest' && now?.tuckedIn ? `tucked-${blanket}` : ''}`} />
           <HugScenery id={id} role={role(side)} moment={now} scene={scenes[side]} visual={visual} skins={pair} blanket={blanket} paused={false} />

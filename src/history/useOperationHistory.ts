@@ -314,18 +314,26 @@ export function useOperationHistory(options: Options) {
       let previous: OperationFrame | undefined;
       let activity: ActivityKind | undefined;
       let visual: WorkVisual = 'web';
+      // What TA was doing just before the chosen start: shown at once, not only when the next record comes.
+      let carried: { activity: ActivityKind; visual: WorkVisual } | undefined;
       const frames = replayFrames(refs, readReplayEvent, config.receiverOffset, config.showTimezone, config.language);
       for await (const frame of condensedReplay(frames, speed)) {
         const at = Date.parse(frame.at);
         if (frame.activity) { activity = frame.activity; visual = frame.workVisual ?? visual; }
         // Before the chosen start, or seen live: only the pup's state is carried forward.
-        if (at < from || liveSpanAt(spans, at)) continue;
+        if (at < from || liveSpanAt(spans, at)) {
+          if (activity) carried = { activity, visual };
+          continue;
+        }
         await skipLive(at);
         if (!valid()) break;
         // Nothing recorded for a while: the partner was away or offline, and
         // the pup sleeps through it until the next record.
         if ((at - clock > REST_GAP_MS || restingAt(day, clock)) && shown !== 'idle' && shown !== 'rest') {
           await present('rest', shownVisual);
+          if (!valid()) break;
+        } else if (!shown && carried) {
+          await present(carried.activity, carried.visual);
           if (!valid()) break;
         }
         await advanceTo(at, previous ? 16 : 0);

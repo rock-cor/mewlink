@@ -7,6 +7,7 @@ import { SettingsPanel, type UpdateViewState } from './components/SettingsPanel'
 import { StatisticsPanel } from './components/StatisticsPanel';
 import { PetActions } from './components/PetActions';
 import { ReplayNotice, ReplayScrubber } from './components/ReplayControls';
+import { FLIP_MS, useReplayFlip } from './pet/replayFlip';
 import { WhatsNewCloud } from './components/WhatsNewCloud';
 import { markWhatsNewSeen, WHATS_NEW, whatsNewToShow } from './whatsNew';
 import { PomodoroTimer } from './components/PomodoroTimer';
@@ -231,6 +232,10 @@ export default function App() {
     syncNow: () => { void syncNow.current(); },
   });
   liveInput.current = live.recordInput;
+  // TA's pup turns over to its mirrored replay side (pet/replayFlip.ts). The replay
+  // is set up further down (it needs this pup's playback), so it is known here a render later.
+  const [replayOn, setReplayOn] = useState(false);
+  const partnerFlip = useReplayFlip(replayOn, reducedMotion, durationScale);
   const [historyDisplay, setHistoryDisplay] = useState<{ activity: ActivityKind; workVisual: WorkVisual }>();
   // Replay shows the past; otherwise live pulses beat the 30 s presence heartbeat.
   const liveShown = live.active && !historyDisplay;
@@ -266,6 +271,8 @@ export default function App() {
     initialWorkVisual: 'web',
     workHandsSettled: !liveShown || (!live.hands.keyboard && !live.hands.pointer),
     transitionDurationMs: Math.round(ACTIVITY_TRANSITION_MS * durationScale),
+    // Turning over, the other side's scene is simply there: no walking from one to the other.
+    instant: partnerFlip.flipping,
   });
   useEffect(() => {
     if (!renderPaused) void preloadSprite(`work-${workVisual}-stress`).catch(() => undefined);
@@ -514,7 +521,7 @@ export default function App() {
     const sender = target === 'self' ? 'partner' : 'self';
     return { sender, senderScene: sceneOf[sender].scene, receiverScene: sceneOf[target].scene,
       seat: seatOf(sceneOf[sender].scene, sceneOf[sender].visual), spot: visitSpotOf(sceneOf[target].scene),
-      geometry: { selfScale, partnerScale, distance: petDistance(preferences.petDistancePercent) } };
+      geometry: { selfScale, partnerScale, distance: petDistance(preferences.petDistancePercent), partnerMirrored: partnerFlip.replayShown } };
   };
   const history = useOperationHistory({
     pairing, enabled: preferences.replayEnabled, activity, workVisual, paused: renderPaused,
@@ -534,7 +541,14 @@ export default function App() {
   const playing = history.playing;
   const current = history.current;
   const partnerLabel = current?.label ?? (companions.partnerLive ? (partnerShown === 'meal' ? text.eating : text.status[partnerActivity]) : text.partnerWaiting);
-  useEffect(() => { setHistoryDisplay(history.playing ? history.display : undefined); }, [history.playing, history.display]);
+  useEffect(() => { setReplayOn(history.playing); }, [history.playing]);
+  // The scene changes sides at the middle of the turn, while the pup is edge-on:
+  // until then the side it is leaving stays (the replay's last scene, turning back).
+  const replayDisplay = useRef(history.display);
+  if (history.playing) replayDisplay.current = history.display;
+  useEffect(() => {
+    setHistoryDisplay(partnerFlip.replayShown ? (history.playing ? history.display : replayDisplay.current) : undefined);
+  }, [partnerFlip.replayShown, history.playing, history.display]);
 
   const publishStatistics = useCallback((visibility: StatisticsVisibility) => enqueueEncryptedEvent(active => {
     const generatedAt = new Date().toISOString();
@@ -1247,6 +1261,14 @@ export default function App() {
     setPetMenuPinned(current => !current);
   }
 
+  // A click on TA's pup turns it over: to the replay of TA's day, and back to
+  // TA now. With nothing to replay it pins the menu, like a click on my own pup.
+  function turnPartnerPup(event: ReactMouseEvent<HTMLButtonElement>) {
+    if (!history.available && !history.playing) { pinPetMenu(event); return; }
+    if (petDrag.current.dragging || (event.detail > 0 && (petDrag.current.suppressClick || !petHitAt(event.currentTarget, event)))) return;
+    void history.start(history.playing || !history.unseen ? {} : { unseen: true });
+  }
+
   function dismissPetMenu() {
     window.clearTimeout(menuCloseTimer.current);
     menuCloseTimer.current = undefined;
@@ -1470,7 +1492,7 @@ export default function App() {
             onPomodoro={startOrStopPomodoro} />
         </div>
 
-        <div className={`pet-pair ${connected ? 'paired' : 'solo'} ${petMenuOpen ? 'menu-open' : ''} ${displayedGesture ? `interacting target-${displayedGesture.target} interaction-${hug ? 'hug' : 'water'}` : ''}`}>
+        <div className={`pet-pair ${connected ? 'paired' : 'solo'} ${petMenuOpen ? 'menu-open' : ''} ${partnerFlip.replayShown ? 'partner-replay' : ''} ${displayedGesture ? `interacting target-${displayedGesture.target} interaction-${hug ? 'hug' : 'water'}` : ''}`}>
           <button
             className={`pet-avatar self-pet ${hugAvatarClass(hugRole('self'), hugNow)}`}
             type="button"
@@ -1508,7 +1530,8 @@ export default function App() {
               label={text.pomodoroLeft(minutesLeft(activePomodoro, selfPomodoroNow))} />}
           </button>
           {connected && <button
-            className={`pet-avatar partner-pet ${hugAvatarClass(hugRole('partner'), hugNow)}`}
+            className={`pet-avatar partner-pet ${partnerFlip.mirrored ? 'replay-side' : ''} ${partnerFlip.replayShown ? 'replay-scene' : ''} ${partnerFlip.flipping ? 'flipping' : ''} ${hugAvatarClass(hugRole('partner'), hugNow)}`}
+            style={{ '--flip-ms': `${Math.round(FLIP_MS * durationScale)}ms` } as CSSProperties}
             type="button"
             aria-label={text.partnerPet(partnerLabel)}
             onPointerDown={event => { if (event.button === 0) petDrag.current.newClick(); }}
@@ -1517,7 +1540,7 @@ export default function App() {
             onPointerEnter={revealPetAtPointer}
             onPointerMove={revealPetAtPointer}
             onPointerLeave={hidePetMenuSoon}
-            onClick={pinPetMenu}
+            onClick={turnPartnerPup}
             onFocus={revealPetMenu}
             onBlur={hidePetMenuSoon}
             onWheel={event => handlePetPinch(event, 'partner')}

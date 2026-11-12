@@ -51,7 +51,9 @@ export const hugAvatarClass = (role: HugRole | undefined, moment: HugMoment | un
 // ---------------------------------------------------------------- geometry
 
 /** How the pair is laid out (styles.css .pet-pair, .pet-avatar, pet.css .pet-sprite). */
-export interface PairGeometry { selfScale: number; partnerScale: number; distance: number }
+export interface PairGeometry { selfScale: number; partnerScale: number; distance: number;
+  /** TA's pup is on its replay side, drawn mirrored (pet/replayFlip.ts): its seat and the spot beside it are mirrored too. */
+  partnerMirrored?: boolean }
 const FRAME_W = 384, FRAME_H = 256, SPRITE_W = 230, SPRITE_H = 153, SPRITE_LEFT = -2, SPRITE_BOTTOM = 6, AVATAR_W = 228;
 export const FRAME_TO_CSS = SPRITE_W / FRAME_W;
 
@@ -66,7 +68,8 @@ export const pairWidth = ({ selfScale, partnerScale, distance }: PairGeometry) =
 export function framePoint(side: 'self' | 'partner', [fx, fy]: readonly [number, number], geometry: PairGeometry) {
   const scale = side === 'self' ? geometry.selfScale : geometry.partnerScale;
   const left = side === 'self' ? 0 : pairWidth(geometry) - AVATAR_W * scale;
-  const x = SPRITE_LEFT + fx * FRAME_TO_CSS;
+  const drawn = SPRITE_LEFT + fx * FRAME_TO_CSS;
+  const x = side === 'partner' && geometry.partnerMirrored ? AVATAR_W - drawn : drawn;
   const y = SPRITE_BOTTOM + (FRAME_H - fy) * SPRITE_H / FRAME_H;
   return { x: left + x * scale, y: y * scale, scale };
 }
@@ -123,7 +126,9 @@ export interface HugPlan {
  * stretches on its cushion) and comes out trotting, its size changing to the
  * receiver's on the way; at the receiver's right it turns to face it; the
  * hug; then it turns back if it has to and trots home, and sits down again.
- * Each step is a fixed stride, so a longer way takes longer.
+ * Each step is a fixed stride, so a longer way takes longer. (A mirrored TA
+ * is mirrored in all of this: its seat, the side it is hugged from, and the
+ * way its own pup faces getting up and sitting down.)
  */
 export function planHug(walk: HugWalk, reducedMotion = false): HugPlan {
   if (reducedMotion) return { duration: HUG_HOLD_MS, away: [0, 0], host: [0, HUG_HOLD_MS], frames: [] };
@@ -131,6 +136,10 @@ export function planHug(walk: HugWalk, reducedMotion = false): HugPlan {
   const from = framePoint(walk.sender, walk.seat, walk.geometry);
   const to = framePoint(receiver, walk.spot, walk.geometry);
   const out: 1 | -1 = to.x >= from.x ? 1 : -1;
+  const mirrored = (side: 'self' | 'partner') => side === 'partner' && Boolean(walk.geometry.partnerMirrored);
+  /** The way a pup faces at its own desk, and the way a visitor faces the receiver. */
+  const seated: 1 | -1 = mirrored(walk.sender) ? -1 : 1;
+  const toward: 1 | -1 = mirrored(receiver) ? 1 : -1;
   const stride = STRIDE * FRAME_TO_CSS * (from.scale + to.scale) / 2;
   const steps = Math.max(6, Math.round(Math.abs(to.x - from.x) / stride));
   const leave = layout.walker.leave[walk.senderScene === 'away' ? 'work' : walk.senderScene === 'meal' ? 'rest' : walk.senderScene];
@@ -155,7 +164,7 @@ export function planHug(walk: HugWalk, reducedMotion = false): HugPlan {
   const turn = (fromFacing: 1 | -1) => {
     for (const { facing, squash } of TURN) push(1, 0, (facing ? -fromFacing : fromFacing) as 1 | -1, { squash });
   };
-  for (let k = 0; k < leaveFrames; k++) push(0, leave + k, 1);
+  for (let k = 0; k < leaveFrames; k++) push(0, leave + k, seated);
   trot(true);
   let host: [number, number];
   const stand = (facing: 1 | -1, count: number, { sink = 0, squash = 1 } = {}) => {
@@ -167,15 +176,15 @@ export function planHug(walk: HugWalk, reducedMotion = false): HugPlan {
   };
   if (walk.receiverScene === 'meal') {
     // Facing the pup at its meal (at its right), it hops twice for it, and goes home.
-    if (out === 1) turn(1);
-    stand(-1, 2);
-    hop(-1);
-    stand(-1, 1, { squash: 1.08 });
-    hop(-1);
+    if (out !== toward) turn(out);
+    stand(toward, 2);
+    hop(toward);
+    stand(toward, 1, { squash: 1.08 });
+    hop(toward);
     host = [at, at];
-    stand(-1, 1, { squash: 1.08 });
-    stand(-1, 2);
-    if (out === -1) turn(-1);
+    stand(toward, 1, { squash: 1.08 });
+    stand(toward, 2);
+    if (out === toward) turn(out);
   } else if (walk.receiverScene === 'away') {
     // Nobody there: it looks round, back again, and with a little hop leaves its paw print; then home.
     stand(out, 3);
@@ -190,14 +199,14 @@ export function planHug(walk: HugWalk, reducedMotion = false): HugPlan {
     turn(out);
   } else {
     // It hugs facing left (it is at the receiver's right).
-    if (out === 1) turn(1);
+    if (out !== toward) turn(out);
     host = [at, at + HUG_HOLD_MS];
     frames.push({ ...frames[frames.length - 1], at, shown: false });
     at += HUG_HOLD_MS;
-    if (out === -1) turn(-1);
+    if (out === toward) turn(out);
   }
   trot(false);
-  for (let k = leaveFrames - 1; k >= 0; k--) push(0, leave + k, 1);
+  for (let k = leaveFrames - 1; k >= 0; k--) push(0, leave + k, seated);
   frames.push({ ...frames[frames.length - 1], at, shown: false });
   return { duration: at, away: [0, at], host, frames };
 }

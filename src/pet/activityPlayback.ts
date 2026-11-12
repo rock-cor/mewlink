@@ -24,6 +24,8 @@ interface ActivityPlaybackOptions {
   workHandsSettled: boolean;
   transitionDurationMs: number;
   paused?: boolean;
+  /** Show what is wanted at once, without the change between two scenes (TA's pup turning over to its replay side). */
+  instant?: boolean;
 }
 
 export function useActivityPlayback({
@@ -34,6 +36,7 @@ export function useActivityPlayback({
   workHandsSettled,
   transitionDurationMs,
   paused = false,
+  instant = false,
 }: ActivityPlaybackOptions) {
   const [displayedActivity, setDisplayedActivity] = useState(initialActivity);
   const [displayedWorkVisual, setDisplayedWorkVisual] = useState(initialWorkVisual);
@@ -51,6 +54,18 @@ export function useActivityPlayback({
   desiredWorkVisualRef.current = desiredWorkVisual;
   workHandsSettledRef.current = workHandsSettled;
 
+  useEffect(() => {
+    if (!instant || paused) return;
+    if (!transitionRef.current && displayedActivityRef.current === desiredActivity
+      && displayedWorkVisualRef.current === desiredWorkVisual) return;
+    transitionRef.current = undefined;
+    displayedActivityRef.current = desiredActivity;
+    displayedWorkVisualRef.current = desiredWorkVisual;
+    setTransition(undefined);
+    setDisplayedActivity(desiredActivity);
+    setDisplayedWorkVisual(desiredWorkVisual);
+  }, [instant, paused, desiredActivity, desiredWorkVisual]);
+
   const pendingDescriptor = useCallback((): Omit<ActivityTransition, 'key'> | undefined => {
     const from = displayedActivityRef.current;
     const to = desiredActivityRef.current;
@@ -64,7 +79,7 @@ export function useActivityPlayback({
   }, []);
 
   const beginTransition = useCallback((atLoopBoundary: boolean) => {
-    if (paused || transitionRef.current) return false;
+    if (paused || instant || transitionRef.current) return false;
     const descriptor = pendingDescriptor();
     if (!descriptor) return false;
     if (descriptor.from === 'work') {
@@ -77,7 +92,7 @@ export function useActivityPlayback({
     transitionRef.current = next;
     setTransition(next);
     return true;
-  }, [paused, pendingDescriptor]);
+  }, [paused, instant, pendingDescriptor]);
 
   useEffect(() => {
     if (paused) return;

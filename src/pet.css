@@ -261,6 +261,8 @@
 }
 .waiting-cup.target-self { left: calc(208px * var(--self-s)); bottom: calc(28px * var(--self-s)); }
 .waiting-cup.target-partner { right: calc(17px * var(--partner-s) - 16px); bottom: calc(28px * var(--partner-s)); }
+/* TA's desk mirrored (its replay side): the cup stands at the mirrored end of it. */
+.pet-pair.partner-replay .waiting-cup.target-partner { right: calc(211px * var(--partner-s)); }
 .waiting-cup::after { content: ''; position: absolute; top: 3px; right: -7px; width: 5px; height: 7px; border: 2px solid #54173e; border-left: 0; border-radius: 0 6px 6px 0; }
 .waiting-cup.tumbler { height: 19px; background: #9dc8ed; }
 .waiting-cup.bottle { width: 13px; height: 20px; border-radius: 4px; background: #9edbcf; }
@@ -338,6 +340,9 @@
   animation: away-paw 320ms cubic-bezier(.2, .8, .2, 1.4) both;
 }
 @keyframes away-words { from { opacity: 0; transform: scale(.7); } }
+/* On TA's mirrored replay side the words still read the right way round. */
+.partner-pet.replay-scene .away-words { transform: scaleX(-1); animation-name: away-words-mirrored; }
+@keyframes away-words-mirrored { from { opacity: 0; transform: scale(-.7, .7); } }
 @keyframes away-paw { from { opacity: 0; transform: scale(1.8); } }
 
 /* The pomodoro stands in its pup's frame (see PomodoroTimer), so it scales and hides with the pup. */

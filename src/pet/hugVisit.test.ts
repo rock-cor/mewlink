@@ -80,6 +80,43 @@ describe('a hug in place', () => {
     expect(fromTa.find(frame => frame.frame < layout.walker.walk)!.facing).toBe(-1);
   });
 
+  it('mirrors everything of TA\'s while TA is on its replay side', () => {
+    const mirrored = { ...geometry, partnerMirrored: true };
+    // A point of TA's frame lands at the mirror image of where it is drawn, about the middle of TA's avatar; mine do not move.
+    const middle = pairWidth(geometry) - 114;
+    for (const fx of [0, 100, 192, 384]) {
+      expect(framePoint('partner', [fx, 256], mirrored).x + framePoint('partner', [fx, 256], geometry).x).toBeCloseTo(2 * middle);
+      expect(framePoint('self', [fx, 256], mirrored)).toEqual(framePoint('self', [fx, 256], geometry));
+    }
+    const shown = (frames: ReturnType<typeof planHug>['frames']) => frames.filter(frame => frame.shown);
+    // TA (mirrored) hugs me: its pup gets up and sits down facing the mirrored way, and still hugs me from my right, facing left.
+    const fromTa = planHug({ ...way('partner'), geometry: mirrored });
+    const plain = planHug(way('partner'));
+    expect(shown(fromTa.frames)[0].facing).toBe(-1);
+    expect(shown(fromTa.frames).at(-1)!.facing).toBe(-1);
+    expect(shown(plain.frames)[0].facing).toBe(1);
+    expect(fromTa.frames[0].x + plain.frames[0].x).toBeCloseTo(2 * middle);
+    const beforeHug = (plan: typeof fromTa) => plan.frames.filter(frame => frame.shown && frame.at < plan.host[0]).at(-1)!;
+    expect(beforeHug(fromTa).facing).toBe(-1);
+    expect(beforeHug(fromTa).x).toBeCloseTo(beforeHug(plain).x);
+    // I hug TA (mirrored): the spot beside TA is mirrored, and my pup faces TA from there, the other way round.
+    const toTa = planHug({ ...way('self'), geometry: mirrored });
+    const toPlain = planHug(way('self'));
+    expect(beforeHug(toTa).x + beforeHug(toPlain).x).toBeCloseTo(2 * middle);
+    expect(beforeHug(toPlain).facing).toBe(-1);
+    expect(beforeHug(toTa).facing).toBe(1);
+    // It leaves its own (unmirrored) desk as ever, and comes home to sit facing as ever.
+    expect(shown(toTa.frames)[0].facing).toBe(1);
+    expect(shown(toTa.frames).at(-1)!.facing).toBe(1);
+    // Having hugged facing right, it turns round to trot home (left).
+    const afterHug = toTa.frames.filter(frame => frame.shown && frame.at >= toTa.host[1]);
+    expect(afterHug.some(frame => frame.squash < 1)).toBe(true);
+    expect(afterHug.at(-2)!.facing).toBe(1);
+    // A meal visit faces the mirrored pup too.
+    const meal = planHug({ ...way('self', 'work', 'meal'), geometry: mirrored });
+    expect(meal.frames.filter(frame => frame.shown && frame.at < meal.host[0]).at(-1)!.facing).toBe(1);
+  });
+
   it('takes longer the further it has to go, a stride at a time', () => {
     const near = planHug({ ...way('self'), geometry: { ...geometry, distance: 170 } });
     const far = planHug({ ...way('self'), geometry: { ...geometry, distance: 339 } });
