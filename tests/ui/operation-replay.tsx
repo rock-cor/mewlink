@@ -64,7 +64,7 @@ export function Checks() {
         await putEvent({ direction: 'in', status: 'delivered', receivedAt: new Date().toISOString(),
           event: { id: 'qa-history-' + index++, version: 1, relationshipId: identity.relationshipId,
             senderDeviceId: identity.partnerDeviceId!, senderUtcOffsetMinutes: 480, createdAt: at, kind: 'operation.batch',
-            payload: { format: 1, startedAt: at, points: [[0, 2, 1, 0, 0, visual], [4000, 3, 0, i % 7 === 0 ? 1 : 0, 0, visual]] } } });
+            payload: { format: 1, startedAt: at, points: [[0, 2, 1, 0, 0, visual], [4000, 3, 1, i % 7 === 0 ? 1 : 0, 0, visual]] } } });
       }
     }
     // A hug just before lunch: the long rest after it must show the sleeping pup, not the hug.
@@ -103,7 +103,7 @@ export function Checks() {
       data-testid="ta" style={{ position: 'relative', height: 300, width: 340, '--flip-ms': `${FLIP_MS}ms` } as CSSProperties}
       onClick={() => { void replay.start(replay.playing || !replay.unseen ? {} : { unseen: true }); }}>
       <SpriteCanvas skin="mint" paused={paused} onLoopBoundary={playback.handleLoopBoundary}
-        className={`pet-sprite partner-sprite ${playback.displayedActivity} ${playback.displayedActivity === 'work' ? 'work-' + playback.displayedWorkVisual : ''} input-${playback.transition ? 'none' : visualInputForActivity(playback.displayedActivity, replay.hands.keyboard, replay.hands.pointer)} ${playback.transition ? 'transition-source-frame' : ''}`} />
+        className={`pet-sprite partner-sprite ${playback.displayedActivity} ${playback.displayedActivity === 'work' ? 'work-' + playback.displayedWorkVisual : ''} input-${playback.transition ? 'none' : visualInputForActivity(playback.displayedActivity === 'meal' ? 'rest' : playback.displayedActivity, replay.hands.keyboard, replay.hands.pointer)} ${playback.transition ? 'transition-source-frame' : ''}`} />
       {playback.transition && <SpriteCanvas key={playback.transition.key} skin="mint" paused={paused}
         className={`pet-sprite partner-sprite activity-transition ${transitionAssetName(playback.transition)}`}
         onPlaybackEnd={() => playback.completeTransition(playback.transition!.key)} />}
