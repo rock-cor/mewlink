@@ -5,6 +5,11 @@ import { compareVersions } from './services/update';
 // it, under the version's title. Keep each to a sentence that fits two short
 // lines; every release from 0.3.31 on needs one (src/whatsNew.test.ts).
 export const WHATS_NEW: Record<string, Record<Language, string>> = {
+  '0.3.48': {
+    zh: '点击 TA 的小狗，翻面切换实时与镜像回放',
+    'zh-Hant': '點擊 TA 的小狗，翻面切換即時與鏡像回放',
+    en: 'Click TA\'s pup to flip between live and mirrored replay.',
+  },
   '0.3.47': {
     zh: 'TA 离线时小狗会睡觉；回放隐私与稳定性修复',
     'zh-Hant': 'TA 離線時小狗會睡覺；回放隱私與穩定性修復',

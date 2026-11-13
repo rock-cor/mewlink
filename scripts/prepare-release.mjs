@@ -32,7 +32,7 @@ try {
   const macDownload = { url: `https://github.com/${repository}/releases/download/v${version}/MewLink_${version}_universal.dmg`, format: 'dmg' };
   const manifest = {
     schema: 1, version, source: process.env.GITHUB_SHA,
-    notes: "0.3.47：TA 离线或尚未同步时，小狗会睡觉。回放使用对齐的 250 毫秒输入计数，macOS 安全输入期间不记录按键计数；本地回放记录未加密，隐私说明已更新。强化事件校验、解除配对后的数据清理、实时服务限流及发布流程；升级加密和 TLS 依赖并验证旧会话兼容性。 / 0.3.47: Offline or unsynced partner pups sleep. Replay uses aligned 250 ms input counts and excludes macOS Secure Event Input key counts. Local replay recordings are not encrypted; privacy documentation is updated. Stricter event validation and pairing-data cleanup, live relay rate limiting, hardened release workflows, and updated cryptography/TLS dependencies with saved-session compatibility coverage. Four zip advisories remain through tauri-plugin-updater. Beta: macOS is self-signed and unnotarized; Windows is not Authenticode-signed.",
+    notes: "0.3.48：点击 TA 的小狗，翻面切换实时与镜像回放；没有可回放内容时仍可固定菜单。镜像回放中的拥抱位置和朝向、水杯落点同步翻转，离开便签保持可读。回放开始即显示起点前的状态，场景在翻面中途切换。 / 0.3.48: Click TA's pup to flip between live and mirrored replay; without replay, clicking still pins the menu. Hug positions and facings and waiting cups follow the mirrored side, while away-note text stays readable. Replay immediately shows the state before its start and switches scenes mid-turn. Beta: macOS is self-signed and unnotarized; Windows is not Authenticode-signed.",
     pub_date: new Date().toISOString(),
     platforms: { 'darwin-aarch64': macUpdate, 'darwin-x86_64': macUpdate, 'windows-x86_64': winUpdate },
     downloads: { 'darwin-aarch64': macDownload, 'darwin-x86_64': macDownload, 'windows-x86_64': { url: winUpdate.url, format: 'exe' } },
