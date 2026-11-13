@@ -1,4 +1,4 @@
-import { useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { liveBarSpans, restSpans, type LiveSpan, type ReplayDay } from '../history/days';
 import { PixelIcon } from './PixelIcon';
 
@@ -33,12 +33,23 @@ interface ScrubberProps {
   closeLabel: string;
   onSeek: (fraction: number) => void;
   onClose: () => void;
+  /** Shown with the pets' menu, not all the time (TA's mirrored pup already says it is a replay); over it, the menu stays open. */
+  shown?: boolean;
+  onReveal?: () => void;
+  onHide?: () => void;
+  /** Dragging the thumb begins and ends: the bar must stay while it is held. */
+  onScrub?: (active: boolean) => void;
 }
 
 /** A video-style bar for one day: rest is dotted, what was seen live is pale, click or drag to jump, arrows step 5%. */
-export function ReplayScrubber({ day, progress, live = [], timeLabel, positionLabel, closeLabel, onSeek, onClose }: ScrubberProps) {
+export function ReplayScrubber({ day, progress, live = [], timeLabel, positionLabel, closeLabel, onSeek, onClose,
+  shown: visible = true, onReveal, onHide, onScrub }: ScrubberProps) {
   const track = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<number>();
+  const scrub = useRef(onScrub);
+  scrub.current = onScrub;
+  // A replay that ends while the thumb is held must not leave the bar marked as held.
+  useEffect(() => () => scrub.current?.(false), []);
   // Arrow presses add up even before the seek they started has caught up.
   const pendingKey = useRef<{ at: number; fraction: number }>(undefined);
   const fractionAt = (event: PointerEvent) => {
@@ -55,14 +66,15 @@ export function ReplayScrubber({ day, progress, live = [], timeLabel, positionLa
     pendingKey.current = { at: performance.now(), fraction };
     onSeek(fraction);
   };
-  return <div className="replay-scrubber" onPointerDown={event => event.stopPropagation()}>
+  return <div className={`replay-scrubber with-menu ${visible ? 'menu-visible' : ''}`} onPointerDown={event => event.stopPropagation()}
+    onPointerEnter={onReveal} onPointerLeave={onHide} onFocus={onReveal} onBlur={onHide}>
     <span className="replay-time">{timeLabel}</span>
     <div ref={track} className="replay-track" role="slider" tabIndex={0} aria-label={positionLabel}
       aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(shown * 100)} aria-valuetext={timeLabel}
-      onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); setDragging(fractionAt(event)); }}
+      onPointerDown={event => { event.currentTarget.setPointerCapture(event.pointerId); setDragging(fractionAt(event)); onScrub?.(true); }}
       onPointerMove={event => { if (dragging !== undefined) setDragging(fractionAt(event)); }}
-      onPointerUp={event => { if (dragging === undefined) return; setDragging(undefined); onSeek(fractionAt(event)); }}
-      onPointerCancel={() => setDragging(undefined)}
+      onPointerUp={event => { if (dragging === undefined) return; setDragging(undefined); onScrub?.(false); onSeek(fractionAt(event)); }}
+      onPointerCancel={() => { setDragging(undefined); onScrub?.(false); }}
       onKeyDown={step}>
       <span className="replay-fill" style={{ width: `${shown * 100}%` }} />
       {restSpans(day).map(rest => <i key={rest.from} className="replay-rest"

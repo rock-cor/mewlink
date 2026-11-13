@@ -168,6 +168,8 @@ export default function App() {
   const gestureTimer = useRef<number | undefined>(undefined);
   const noticeTimer = useRef<number | undefined>(undefined);
   const menuCloseTimer = useRef<number | undefined>(undefined);
+  /** The replay bar's thumb is held: the menu (and the bar with it) stays until it is let go. */
+  const scrubbingReplay = useRef(false);
   const lastScaleGestureAt = useRef({ self: Number.NEGATIVE_INFINITY, partner: Number.NEGATIVE_INFINITY });
   const petDrag = useRef(new PetDrag());
   const pendingUpdateRef = useRef<Update | undefined>(undefined);
@@ -1245,7 +1247,7 @@ export default function App() {
   }
 
   function hidePetMenuSoon() {
-    if (petMenuPinned || menuCloseTimer.current !== undefined) return;
+    if (petMenuPinned || scrubbingReplay.current || menuCloseTimer.current !== undefined) return;
     menuCloseTimer.current = window.setTimeout(() => {
       menuCloseTimer.current = undefined;
       setPetMenuOpen(false);
@@ -1580,7 +1582,9 @@ export default function App() {
           {playing && history.playingDay
             ? <ReplayScrubber day={history.playingDay} progress={history.progress} live={history.live}
               timeLabel={partnerClock(dayInstant(history.playingDay, history.progress), history.playingDay.offset)}
-              positionLabel={text.replayPosition} closeLabel={text.stopReplay} onSeek={history.seek} onClose={history.stop} />
+              positionLabel={text.replayPosition} closeLabel={text.stopReplay} onSeek={history.seek} onClose={history.stop}
+              shown={petMenuOpen} onReveal={revealPetMenu} onHide={hidePetMenuSoon}
+              onScrub={active => { scrubbingReplay.current = active; if (active) revealPetMenu(); }} />
             : history.unseen && <ReplayNotice shown={petMenuOpen} onReveal={revealPetMenu} onHide={hidePetMenuSoon} label={text.replayNotice(formatDuration(history.unseen.ms, preferences.language), history.unseen.days)}
               detail={text.replayDetail(formatDuration(history.unseen.workMs, preferences.language), formatDuration(history.unseen.ms - history.unseen.workMs, preferences.language))}
               onPlay={() => { void history.start({ unseen: true }); }} />}
