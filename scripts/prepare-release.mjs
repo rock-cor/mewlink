@@ -32,7 +32,7 @@ try {
   const macDownload = { url: `https://github.com/${repository}/releases/download/v${version}/MewLink_${version}_universal.dmg`, format: 'dmg' };
   const manifest = {
     schema: 1, version, source: process.env.GITHUB_SHA,
-    notes: "0.3.48：点击 TA 的小狗，翻面切换实时与镜像回放；没有可回放内容时仍可固定菜单。镜像回放中的拥抱位置和朝向、水杯落点同步翻转，离开便签保持可读。回放开始即显示起点前的状态，场景在翻面中途切换。 / 0.3.48: Click TA's pup to flip between live and mirrored replay; without replay, clicking still pins the menu. Hug positions and facings and waiting cups follow the mirrored side, while away-note text stays readable. Replay immediately shows the state before its start and switches scenes mid-turn. Beta: macOS is self-signed and unnotarized; Windows is not Authenticode-signed.",
+    notes: "0.3.49：当天忙碌程度改为小狗桌前的五档嘴角表情，不再改变体型；大小只由设置决定。TA 的表情只取自实时心跳，不用于回放。回放进度条随小狗悬停菜单显示，离开约 800 毫秒后收起；拖住滑块时保持展开。 / 0.3.49: Daily busyness selects one of five desk-mouth expressions instead of scaling the pups; size follows only your settings. TA's expression comes from live heartbeats and is not applied during replay. The replay bar follows the hover menu, hides about 800 ms after leaving, and stays visible while its thumb is held. Beta: macOS is self-signed and unnotarized; Windows is not Authenticode-signed.",
     pub_date: new Date().toISOString(),
     platforms: { 'darwin-aarch64': macUpdate, 'darwin-x86_64': macUpdate, 'windows-x86_64': winUpdate },
     downloads: { 'darwin-aarch64': macDownload, 'darwin-x86_64': macDownload, 'windows-x86_64': { url: winUpdate.url, format: 'exe' } },
