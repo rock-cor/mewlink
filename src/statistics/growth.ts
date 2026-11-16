@@ -1,13 +1,13 @@
 import type { StatisticsData } from './statistics';
 
-// A companion grows through the day with how busy its person is, measured
-// against their own usual day, and starts at its normal size again at local
-// midnight. Only the coarse level (0..1 in GROWTH_STEP steps) leaves the
-// device, with the presence heartbeat, so the partner sees today's busyness
-// without any of the statistics behind it.
-export const MAX_GROWTH = 0.25;
+// How busy a person's day has been, measured against their own usual day and
+// starting over at local midnight. It shows in the corners of their
+// companion's mouth (pet/mouth.ts; it used to make the companion bigger,
+// hence "growth"). Only the coarse level (0..1 in GROWTH_STEP steps) leaves
+// the device, with the presence heartbeat, so the partner sees today's
+// busyness without any of the statistics behind it.
 export const GROWTH_STEP = 0.05;
-/** A day this many times busier than usual is the largest size. */
+/** A day this many times busier than usual is the highest level. */
 const FULL_GROWTH_RATIO = 1.5;
 /** Cold start: a usual day is about this much work and meetings. */
 const DEFAULT_ACTIVE_MS = 6 * 3_600_000;
@@ -75,12 +75,9 @@ export function quantizeGrowth(value: unknown): number {
   return Math.round(Math.min(1, Math.max(0, value)) * steps) / steps;
 }
 
-/** The size factor for a growth level, on top of the size chosen in settings. */
-export const growthScale = (level: number) => 1 + MAX_GROWTH * quantizeGrowth(level);
-
 /**
  * The partner's level from their latest heartbeat, if it is from their today:
- * after their midnight their companion is back to its normal size.
+ * after their midnight their companion's day starts over.
  */
 export function partnerGrowthLevel(growth: unknown, sentAt: string, offsetMinutes: number | undefined, now = Date.now()): number {
   const sent = Date.parse(sentAt);

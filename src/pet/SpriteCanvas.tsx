@@ -4,9 +4,12 @@ import { petSkinFilters } from './skins';
 import { frameFromPosition, SOURCE_FRAME_HEIGHT as H, SOURCE_FRAME_WIDTH as W, spriteAssetFor, spriteSheets } from './spriteAssets';
 import { spriteClock } from './frameClock';
 import { registerSpritePixels } from './hitTest';
+import { hasMouth, mouthAt, mouthBox, mouthStrip, OWN_MOUTH, type Mouth } from './mouth';
 
 interface Props extends HTMLAttributes<HTMLSpanElement> {
   skin: PetSkin; senderSkin?: PetSkin; paused: boolean;
+  /** The mouth its day's busyness gives it (pet/mouth.ts), painted over its own wherever a frame has that. */
+  mouth?: Mouth;
   onLoopBoundary?: () => boolean;
   onPlaybackEnd?: () => void;
 }
@@ -14,7 +17,7 @@ const PAD = 64;
 
 // Paint at source-frame boundaries, not 60 fps, using a monotonic canvas clock.
 // Work stays input-driven. Only the current frame occupies a GPU surface.
-export function SpriteCanvas({ skin, senderSkin, paused, className = '', onLoopBoundary, onPlaybackEnd, ...props }: Props) {
+export function SpriteCanvas({ skin, senderSkin, paused, mouth, className = '', onLoopBoundary, onPlaybackEnd, ...props }: Props) {
   const element = useRef<HTMLSpanElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const senderCanvas = useRef<HTMLCanvasElement>(null);
@@ -42,7 +45,8 @@ export function SpriteCanvas({ skin, senderSkin, paused, className = '', onLoopB
     let cancelled = false;
     let timer: number | undefined;
     let unregisterPixels = () => {};
-    void lease.ready.then(sheet => {
+    const wantsMouth = mouth !== undefined && mouth !== OWN_MOUTH && hasMouth(asset);
+    void Promise.all([lease.ready, wantsMouth ? mouthStrip() : undefined]).then(([sheet, mouths]) => {
       if (cancelled) return;
       if (surface.width !== W + PAD * 2) surface.width = W + PAD * 2;
       if (surface.height !== H + PAD * 2) surface.height = H + PAD * 2;
@@ -121,6 +125,13 @@ export function SpriteCanvas({ skin, senderSkin, paused, className = '', onLoopB
           } else {
             if (nativeFilter) context.filter = filter;
             context.drawImage(sheet.image, frame * W, 0, W, H, PAD, PAD, W, H);
+            const at = mouths && mouthAt(asset, frame);
+            if (at) {
+              // Within the pup's outline: in its colours, with no shadow of its own.
+              if (nativeFilter) context.filter = petSkinFilters[skin];
+              context.drawImage(mouths, mouth! * mouthBox.width, 0, mouthBox.width, mouthBox.height,
+                PAD + mouthBox.x + at[0], PAD + mouthBox.y + at[1], mouthBox.width, mouthBox.height);
+            }
           }
           previousFrame = frame;
           node.dataset.frame = String(frame);
@@ -133,7 +144,7 @@ export function SpriteCanvas({ skin, senderSkin, paused, className = '', onLoopB
       paint();
     }).catch(() => { unregisterPixels(); if (!cancelled) setFailed(true); });
     return () => { cancelled = true; unregisterPixels(); window.clearTimeout(timer); lease.release(); };
-  }, [asset, className, paused, skin, senderSkin]);
+  }, [asset, className, paused, skin, senderSkin, mouth]);
   return <span {...props} ref={element} data-sprite={asset} className={`${className} ${failed ? '' : 'canvas-sprite'}`}
     onAnimationIteration={event => {
       props.onAnimationIteration?.(event);

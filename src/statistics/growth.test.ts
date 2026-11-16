@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { StatisticsData } from './statistics';
-import { growthLevel, growthScale, MAX_GROWTH, partnerGrowthLevel, quantizeGrowth, usualDay } from './growth';
+import { growthLevel, partnerGrowthLevel, quantizeGrowth, usualDay } from './growth';
 
 const hourMs = 3_600_000;
 // Local noon on 15 Oct 2026, so "today" has room before and after.
@@ -23,9 +23,8 @@ function workday(daysAgo: number, hours: number, input = 0) {
 const data = (...days: ReturnType<typeof workday>[]): StatisticsData => ({ version: 3, buckets: days.flat() });
 
 describe('busyness growth', () => {
-  it('starts every day at the normal size', () => {
+  it('starts every day at nothing', () => {
     expect(growthLevel(data(workday(1, 10)), now)).toBe(0);
-    expect(growthScale(0)).toBe(1);
   });
 
   it('cold start: grows against a default six-hour day', () => {
@@ -60,7 +59,6 @@ describe('busyness growth', () => {
     expect(quantizeGrowth(-1)).toBe(0);
     expect(quantizeGrowth(0.333)).toBe(0.35);
     expect(quantizeGrowth('big')).toBe(0);
-    expect(growthScale(1)).toBe(1 + MAX_GROWTH);
   });
 
   it('shows the partner\'s level only for their own today', () => {

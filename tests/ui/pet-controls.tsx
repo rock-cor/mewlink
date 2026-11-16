@@ -5,7 +5,7 @@ import { PetActions } from '../../src/components/PetActions';
 import { SettingsPanel } from '../../src/components/SettingsPanel';
 import { StatisticsPanel } from '../../src/components/StatisticsPanel';
 import { defaultPreferences, petDistance, petWindowWidth, type Preferences } from '../../src/settings/preferences';
-import { growthScale } from '../../src/statistics/growth';
+import { mouthFor } from '../../src/pet/mouth';
 import { PomodoroTimer } from '../../src/components/PomodoroTimer';
 import { DeskSpeaker } from '../../src/components/DeskSpeaker';
 import { deskShown } from '../../src/pet/interaction';
@@ -35,13 +35,13 @@ const qaDay = groupReplayDays([0, 40, 200, 230].map(minute => ({ id: String(minu
   at: new Date(Date.UTC(2026, 9, 22, 1) + minute * 60_000).toISOString() })), 480)[0];
 // ?pomodoro: one ten minutes in on both pups.
 const pomodoro = params.has('pomodoro') ? newPomodoro('qa', Date.now() - 10 * 60_000) : undefined;
+// ?growth=0..1 previews today's busyness on both companions' mouths (they keep their size).
+const mouth = params.has('growth') ? mouthFor(Number(params.get('growth'))) : undefined;
 export function Checks() {
   const [preferences, setPreferences] = useState<Preferences>(() => ({ ...defaultPreferences(), language: 'en',
     petDistancePercent: Number(new URLSearchParams(location.search).get('distance') ?? 100),
     selfPetScalePercent: Number(new URLSearchParams(location.search).get('size') ?? 100),
     partnerPetScalePercent: Number(new URLSearchParams(location.search).get('size') ?? 100) }));
-  // ?growth=0..1 previews today's busyness growth on both companions.
-  const growth = growthScale(Number(new URLSearchParams(location.search).get('growth') ?? 0));
   const [panel, setPanel] = useState('');
   const [cup, setCup] = useState<CupStyle>('ceramic');
   const [activity, setActivity] = useState<ShownActivity>('idle');
@@ -61,9 +61,9 @@ export function Checks() {
     const done = window.setTimeout(() => setHug(undefined), 3_200 + gatherMs);
     return () => { window.clearTimeout(ready); window.clearTimeout(done); };
   }, [hug, gatherMs]);
-  return <><main className="desktop-pet" data-window-width={petWindowWidth(preferences.petDistancePercent, preferences.selfPetScalePercent / 100 * growth, preferences.partnerPetScalePercent / 100 * growth)} style={{ background: '#f2e6db',
+  return <><main className="desktop-pet" data-window-width={petWindowWidth(preferences.petDistancePercent, preferences.selfPetScalePercent / 100, preferences.partnerPetScalePercent / 100)} style={{ background: '#f2e6db',
     '--pet-distance': `${petDistance(preferences.petDistancePercent)}px`, '--gather-ms': `${gatherMs}ms`,
-    '--self-pet-scale': String(preferences.selfPetScalePercent / 100 * growth), '--partner-pet-scale': String(preferences.partnerPetScalePercent / 100 * growth),
+    '--self-pet-scale': String(preferences.selfPetScalePercent / 100), '--partner-pet-scale': String(preferences.partnerPetScalePercent / 100),
     '--self-pet-skin-filter': petSkinFilters[mySkin], '--partner-pet-skin-filter': petSkinFilters[taSkin] } as CSSProperties}>
     <section className="pet-zone">
       <div className="hover-ui menu-visible">
@@ -72,7 +72,7 @@ export function Checks() {
           onHug={() => setHug(String(Date.now()))} onWater={noop} onReplay={noop} onPomodoro={noop} pomodoroMinutes={18} />
       </div>
       <div className={`pet-pair paired ${hug ? 'interacting target-partner interaction-hug' : ''}`}>
-        <button className="pet-avatar self-pet" aria-label="Self working"><SpriteCanvas skin={mySkin} paused={false} className="pet-sprite work work-code input-none" />
+        <button className="pet-avatar self-pet" aria-label="Self working"><SpriteCanvas skin={mySkin} paused={false} mouth={mouth} className="pet-sprite work work-code input-none" />
           {pomodoro && <PomodoroTimer pomodoro={pomodoro} atPaw paused={false} label="pomodoro" />}
           <DeskSpeaker playing={sound} /></button>
         <Playback key={remount} desired={activity} paused={paused} reduced={reduced} sound={sound} />
@@ -122,11 +122,11 @@ export function Playback({ desired, paused, reduced, sound }: { desired: ShownAc
     '--activity-transition-duration': '480ms' } as CSSProperties;
   const noCss = reduced ? { animation: 'none' } : undefined;
   return <button className="pet-avatar partner-pet" style={style} aria-label={`Rendered partner ${playback.displayedActivity}${playback.transition ? ' transitioning' : ''}`}>
-    <SpriteCanvas skin={taSkin} paused={paused} onLoopBoundary={playback.handleLoopBoundary} style={noCss}
+    <SpriteCanvas skin={taSkin} paused={paused} mouth={mouth} onLoopBoundary={playback.handleLoopBoundary} style={noCss}
       className={`pet-sprite partner-sprite ${playback.displayedActivity} ${playback.displayedActivity === 'work' ? 'work-web' : ''} input-none ${playback.transition ? 'transition-source-frame' : ''}`} />
     {pomodoro && <PomodoroTimer pomodoro={pomodoro} atPaw paused={false} label="pomodoro"
       x={params.has('cup') ? clearOfMyCup(1, 1, petDistance(Number(params.get('distance') ?? 100))) : undefined} />}
-    {playback.transition && <SpriteCanvas skin={taSkin} paused={paused} key={playback.transition.key} style={noCss}
+    {playback.transition && <SpriteCanvas skin={taSkin} paused={paused} mouth={mouth} key={playback.transition.key} style={noCss}
       className={`pet-sprite partner-sprite activity-transition ${transitionAssetName(playback.transition)}`}
       onPlaybackEnd={() => playback.completeTransition(playback.transition!.key)} />}
     {deskShown(playback) && <DeskSpeaker playing={sound && playback.displayedActivity === 'work'} />}

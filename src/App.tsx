@@ -61,7 +61,8 @@ import { createSessionQueue } from './pairing/sessionQueue';
 import { copyPairingInvite } from './pairing/copyInvite';
 import { animationDurationScale, effectiveUtcOffsetMinutes, loadPreferences, PET_WINDOW_MIN_WIDTH, petDistance, petWindowWidth, savePreferences, scalePetWithPinch } from './settings/preferences';
 import { currentGrowthLevel, currentStatisticsBundle, flushStatistics, recordActivityStatistics, recordInputStatistics, recordPomodoroStatistics } from './statistics/statistics';
-import { growthScale, partnerGrowthLevel } from './statistics/growth';
+import { partnerGrowthLevel } from './statistics/growth';
+import { mouthFor } from './pet/mouth';
 import { appCopy } from './i18n';
 import { queueDesktopWindow, setDesktopPanel } from './platform/desktopPanel';
 import { petWindowLayout } from './platform/petWindow';
@@ -279,8 +280,9 @@ export default function App() {
   useEffect(() => {
     if (!renderPaused) void preloadSprite(`work-${workVisual}-stress`).catch(() => undefined);
   }, [renderPaused, workVisual]);
-  // Each companion grows with its person's busyness today (statistics/growth),
-  // re-read every minute; the partner's level arrives with their heartbeat.
+  // Each companion's mouth shows its person's busyness today (statistics/growth,
+  // pet/mouth.ts), re-read every minute; the partner's level arrives with their
+  // heartbeat. (It used to make the pup bigger; the pups keep their size now.)
   const growWithBusyness = preferences.growWithBusyness;
   const [selfGrowthLevel, setSelfGrowthLevel] = useState(() => currentGrowthLevel());
   useEffect(() => {
@@ -288,8 +290,11 @@ export default function App() {
     return () => window.clearInterval(timer);
   }, []);
   const selfGrowth = growWithBusyness ? selfGrowthLevel : 0;
-  const selfScale = preferences.selfPetScalePercent / 100 * growthScale(selfGrowth);
-  const partnerScale = preferences.partnerPetScalePercent / 100 * growthScale(growWithBusyness ? partnerGrowth : 0);
+  const selfScale = preferences.selfPetScalePercent / 100;
+  const partnerScale = preferences.partnerPetScalePercent / 100;
+  const selfMouth = growWithBusyness ? mouthFor(selfGrowth) : undefined;
+  // TA's, from TA's live heartbeat: a replay of TA's past does not say how busy that day had been.
+  const partnerMouth = growWithBusyness && companions.partnerLive && !historyDisplay ? mouthFor(partnerGrowth) : undefined;
   const motionStyle = useMemo(() => ({
     '--self-pet-scale': String(selfScale),
     '--partner-pet-scale': String(partnerScale),
@@ -1513,12 +1518,12 @@ export default function App() {
             onBlur={hidePetMenuSoon}
             onWheel={event => handlePetPinch(event, 'self')}
           >
-            <SpriteCanvas skin={companions.self.skin} paused={renderPaused}
+            <SpriteCanvas skin={companions.self.skin} paused={renderPaused} mouth={selfMouth}
               className={`pet-sprite ${selfPlayback.displayedActivity} ${selfPlayback.displayedActivity === 'work' ? `work-${selfPlayback.displayedWorkVisual}` : ''} input-${selfPlayback.transition ? 'none' : visualInputKind} ${inputStressed && !selfPlayback.transition ? 'input-stressed' : ''} ${selfPlayback.transition ? 'transition-source-frame' : ''} ${tuckedClass('self')}`}
               aria-hidden="true"
               onLoopBoundary={selfPlayback.handleLoopBoundary}
             />
-            {selfPlayback.transition && <SpriteCanvas skin={companions.self.skin} paused={renderPaused}
+            {selfPlayback.transition && <SpriteCanvas skin={companions.self.skin} paused={renderPaused} mouth={selfMouth}
               key={selfPlayback.transition.key}
               className={`pet-sprite activity-transition ${transitionAssetName(selfPlayback.transition)}`}
               aria-hidden="true"
@@ -1547,12 +1552,12 @@ export default function App() {
             onBlur={hidePetMenuSoon}
             onWheel={event => handlePetPinch(event, 'partner')}
           >
-            <SpriteCanvas skin={partnerSkin} paused={renderPaused}
+            <SpriteCanvas skin={partnerSkin} paused={renderPaused} mouth={partnerMouth}
               className={`pet-sprite partner-sprite ${partnerPlayback.displayedActivity} ${partnerPlayback.displayedActivity === 'work' ? `work-${partnerPlayback.displayedWorkVisual}` : ''} input-${partnerPlayback.transition ? 'none' : partnerWinding ? (partnerWindingPaw ? 'pointer' : 'none') : playing ? visualInputForActivity(partnerActivity, history.hands.keyboard, history.hands.pointer) : liveShown ? visualInputForActivity(partnerActivity, live.hands.keyboard, live.hands.pointer) : 'none'} ${(playing ? history.hands.stressed : liveShown && live.hands.stressed) && !partnerPlayback.transition ? 'input-stressed' : ''} ${liveShown ? 'live' : ''} ${playing ? 'replaying' : ''} ${partnerPlayback.transition ? 'transition-source-frame' : ''} ${tuckedClass('partner')}`}
               aria-hidden="true"
               onLoopBoundary={partnerPlayback.handleLoopBoundary}
             />
-            {partnerPlayback.transition && <SpriteCanvas skin={partnerSkin} paused={renderPaused}
+            {partnerPlayback.transition && <SpriteCanvas skin={partnerSkin} paused={renderPaused} mouth={partnerMouth}
               key={partnerPlayback.transition.key}
               className={`pet-sprite partner-sprite activity-transition ${transitionAssetName(partnerPlayback.transition)}`}
               aria-hidden="true"
@@ -1566,7 +1571,8 @@ export default function App() {
               x={pendingCups.self ? clearOfMyCup(selfScale, partnerScale, petDistance(preferences.petDistancePercent)) : undefined}
               label={text.partnerPomodoroLeft(minutesLeft(partnerPomodoro, partnerPomodoroNow))} />}
           </button>}
-          {displayedGesture && !hug && <SpriteCanvas key={displayedGesture.id} skin={gestureSkins.receiver} paused={renderPaused} className={`interaction-sprite ${displayedGesture.variant} target-${displayedGesture.target} cup-${displayedGesture.cupStyle ?? 'ceramic'}`} aria-hidden="true" />}
+          {displayedGesture && !hug && <SpriteCanvas key={displayedGesture.id} skin={gestureSkins.receiver} paused={renderPaused}
+            mouth={displayedGesture.target === 'self' ? selfMouth : partnerMouth} className={`interaction-sprite ${displayedGesture.variant} target-${displayedGesture.target} cup-${displayedGesture.cupStyle ?? 'ceramic'}`} aria-hidden="true" />}
           {hug && <HugWalk key={hug.id} id={hug.id} skin={gestureSkins.sender} scale={durationScale} paused={renderPaused} reducedMotion={reducedMotion}
             onMoment={onHugMoment} walk={hugWayFor(hug.target)} />}
           {(['self', 'partner'] as const).map(target => pendingCups[target] && !(displayedGesture?.target === target && displayedGesture.variant.startsWith('water')) && <span key={target} className={`waiting-cup target-${target} ${pendingCups[target]!.style}`} aria-label={text.water}><i /><i /></span>)}

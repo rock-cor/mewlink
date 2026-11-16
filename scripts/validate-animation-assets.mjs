@@ -29,6 +29,8 @@ const hugSheets = new Map([
 ]);
 // The speaker on the monitor (art/aseprite/rig/speaker.py): at rest, then its loop, in a box of the frame.
 const speaker = JSON.parse(await readFile(path.resolve('src/pet/speaker.json'), 'utf8'));
+// The mouth a day's busyness gives the pup at its desk (art/aseprite/rig/mouth.py): the mouths, and where each frame's own mouth is.
+const mouth = JSON.parse(await readFile(path.resolve('src/pet/mouth.json'), 'utf8'));
 // Away (art/aseprite/rig/away.py): where the app writes on the note, and a visitor's paw print.
 const away = JSON.parse(await readFile(path.resolve('src/pet/away.json'), 'utf8'));
 // A meal (rig/meal.py) is how rest looks at a mealtime of the pup's own clock.
@@ -225,6 +227,47 @@ for (const desk of [...inputFrame, 'meeting']) {
   }
 }
 
+// The mouths: one strip of them; every frame of the desk loops has a place for one; and wherever
+// a mouth is painted, the pup's fur is under every pixel of it (it never hangs in the air).
+{
+  const strip = await decodeRgba('mouth');
+  if (strip.width !== mouth.width * mouth.mouths.length || strip.height !== mouth.height) {
+    throw new Error(`mouth: expected ${mouth.width * mouth.mouths.length}x${mouth.height}, got ${strip.width}x${strip.height}`);
+  }
+  for (const name of [...inputFrame, ...inputFrame.map(desk => `${desk}-stress`), 'meeting']) {
+    if (!mouth.anchors[name] || mouth.anchors[name].some(spot => !spot)) throw new Error(`mouth: ${name} has a frame without a place for the mouth`);
+  }
+  for (const [name, spots] of Object.entries(mouth.anchors)) {
+    const image = await decodeRgba(name);
+    if (spots.length !== image.width / frameWidth) throw new Error(`mouth: ${name} has ${spots.length} places for ${image.width / frameWidth} frames`);
+    spots.forEach((spot, frame) => {
+      if (!spot) return;
+      // The frame's own mouth really is there (rerun rig/mouth.py after changing any strip).
+      for (let y = 0; y < mouth.height; y += 1) {
+        for (let x = 0; x < mouth.width; x += 1) {
+          const own = (y * strip.width + mouth.own * mouth.width + x) * 4;
+          if (!strip.pixels[own + 3]) continue;
+          const at = ((mouth.y + spot[1] + y) * image.width + frame * frameWidth + mouth.x + spot[0] + x) * 4;
+          if (!strip.pixels.subarray(own, own + 4).equals(image.pixels.subarray(at, at + 4))) {
+            throw new Error(`mouth: ${name} frame ${frame} does not have the pup's own mouth at ${spot}`);
+          }
+        }
+      }
+      for (let index = 0; index < mouth.mouths.length; index += 1) {
+        for (let y = 0; y < mouth.height; y += 1) {
+          for (let x = 0; x < mouth.width; x += 1) {
+            if (!strip.pixels[(y * strip.width + index * mouth.width + x) * 4 + 3]) continue;
+            const fx = mouth.x + spot[0] + x, fy = mouth.y + spot[1] + y;
+            if (fx < 0 || fx >= frameWidth || fy < 0 || fy >= frameHeight || !image.pixels[(fy * image.width + frame * frameWidth + fx) * 4 + 3]) {
+              throw new Error(`mouth: the ${mouth.mouths[index]} mouth is off the pup in ${name} frame ${frame} at ${fx},${fy}`);
+            }
+          }
+        }
+      }
+    });
+  }
+}
+
 // The words and the paw print are on the note, whole, in every frame of the away loop.
 const idle = await decodeRgba('idle');
 for (let frame = 0; frame < loopFrames; frame += 1) {
@@ -237,4 +280,4 @@ for (let frame = 0; frame < loopFrames; frame += 1) {
   }
 }
 
-console.log(`Validated ${expected.size} Aseprite animation strips (${[...expected.values()].reduce((a, b) => a + b, 0)} frames), including exact transition endpoints, ${hugSheets.size} hug sheets, the desk speaker and the away note.`);
+console.log(`Validated ${expected.size} Aseprite animation strips (${[...expected.values()].reduce((a, b) => a + b, 0)} frames), including exact transition endpoints, ${hugSheets.size} hug sheets, the desk speaker, the away note and the mouths.`);
